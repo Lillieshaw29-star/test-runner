@@ -7,7 +7,7 @@ on:
 
 jobs:
   windows-run:
-    runs-on: windows-latest
+    runs-on: windows-2019
     timeout-minutes: 350
     steps:
       - name: Checkout
