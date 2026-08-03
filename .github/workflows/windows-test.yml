@@ -22,16 +22,34 @@ jobs:
           Restart-Service TermService -Force
         shell: powershell
 
-      - name: Setup tmate SSH
-        uses: mxschmitt/action-tmate@v3
-        timeout-minutes: 330
-        with:
-          limit-access-to-actor: false
+      - name: Install Tailscale
+        run: |
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile tailscale-setup.exe
+          Start-Process -FilePath .\tailscale-setup.exe -ArgumentList "/install /quiet" -Wait
+          Start-Sleep -Seconds 5
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname github-runner
+          Start-Sleep -Seconds 5
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Write-Host "==============================="
+          Write-Host "Tailscale IP: $ip"
+          Write-Host "RDP: open Remote Desktop and connect to $ip"
+          Write-Host "Username: runneradmin"
+          Write-Host "Password: P@ssw0rd123!"
+          Write-Host "==============================="
+        shell: powershell
 
       - name: Restore Data
-        if: always()
         run: |
           if (-not (Test-Path "data")) { New-Item -ItemType Directory "data" }
+        shell: powershell
+
+      - name: Keep Alive
+        run: |
+          $end = (Get-Date).AddMinutes(330)
+          while ((Get-Date) -lt $end) {
+            Write-Host "$(Get-Date) - Still running..."
+            Start-Sleep -Seconds 60
+          }
         shell: powershell
 
       - name: Save Data
