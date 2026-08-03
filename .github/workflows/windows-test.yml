@@ -16,9 +16,13 @@ jobs:
       - name: Enable RDP
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          netsh advfirewall firewall add rule name="RDP" dir=in localport=3389 protocol=TCP action=allow
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
           Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force)
+          Restart-Service TermService -Force
+          Start-Sleep -Seconds 3
+          $rdpCheck = Get-NetTCPConnection -LocalPort 3389 -ErrorAction SilentlyContinue
+          if ($rdpCheck) { Write-Host "RDP is listening on port 3389" } else { Write-Host "WARNING: RDP not listening!" }
         shell: powershell
 
       - name: Setup Tunnel
@@ -26,17 +30,17 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.2/bore-v0.5.2-x86_64-pc-windows-msvc.zip" -OutFile bore.zip
           Expand-Archive bore.zip -DestinationPath bore
           Start-Process -FilePath .\bore\bore.exe -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput bore_out.txt -RedirectStandardError bore_err.txt
-          Start-Sleep -Seconds 5
+          Start-Sleep -Seconds 8
           $output = Get-Content bore_out.txt -ErrorAction SilentlyContinue
           $errout = Get-Content bore_err.txt -ErrorAction SilentlyContinue
           Write-Host "==============================="
           Write-Host "BORE OUTPUT:"
           Write-Host ($output -join "`n")
           Write-Host ($errout -join "`n")
+          Write-Host "==============================="
           Write-Host "Username: runneradmin"
           Write-Host "Password: P@ssw0rd123!"
           Write-Host "==============================="
-          Write-Host "Use Remote Desktop to connect to bore.pub:PORT shown above"
         shell: powershell
 
       - name: Restore Data
