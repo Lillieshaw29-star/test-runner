@@ -2,22 +2,43 @@ name: Windows Test
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
 
 jobs:
   windows-run:
     runs-on: windows-latest
     timeout-minutes: 350
     steps:
-      - name: System Info
-        run: |
-          systeminfo
-          echo "=== Running ==="
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Keep Alive
+      - name: Restore Data
         run: |
-          $end = (Get-Date).AddMinutes(340)
+          if (-not (Test-Path "data")) { New-Item -ItemType Directory "data" }
+          Write-Host "Data folder ready"
+        shell: powershell
+
+      - name: Do Work
+        run: |
+          $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+          Add-Content -Path "data/log.txt" -Value "Run at $timestamp"
+          Write-Host "Working..."
+          $end = (Get-Date).AddMinutes(330)
           while ((Get-Date) -lt $end) {
             Write-Host "$(Get-Date) - Still running..."
             Start-Sleep -Seconds 60
+          }
+        shell: powershell
+
+      - name: Save Data
+        if: always()
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add data/
+          git diff --staged --quiet; if (-not $?) {
+            git commit -m "Auto-save data $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+            git push
           }
         shell: powershell
