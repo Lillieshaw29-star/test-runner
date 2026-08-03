@@ -1,0 +1,23 @@
+name: Windows Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows-run:
+    runs-on: windows-latest
+    timeout-minutes: 350
+    steps:
+      - name: System Info
+        run: |
+          systeminfo
+          echo "=== Running ==="
+
+      - name: Keep Alive
+        run: |
+          $end = (Get-Date).AddMinutes(340)
+          while ((Get-Date) -lt $end) {
+            Write-Host "$(Get-Date) - Still running..."
+            Start-Sleep -Seconds 60
+          }
+        shell: powershell
