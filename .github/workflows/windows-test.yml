@@ -20,42 +20,18 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
           Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force)
           Restart-Service TermService -Force
-          Start-Sleep -Seconds 3
-          $rdpCheck = Get-NetTCPConnection -LocalPort 3389 -ErrorAction SilentlyContinue
-          if ($rdpCheck) { Write-Host "RDP is listening on port 3389" } else { Write-Host "WARNING: RDP not listening!" }
         shell: powershell
 
-      - name: Setup Tunnel
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.2/bore-v0.5.2-x86_64-pc-windows-msvc.zip" -OutFile bore.zip
-          Expand-Archive bore.zip -DestinationPath bore
-          Start-Process -FilePath .\bore\bore.exe -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput bore_out.txt -RedirectStandardError bore_err.txt
-          Start-Sleep -Seconds 8
-          $output = Get-Content bore_out.txt -ErrorAction SilentlyContinue
-          $errout = Get-Content bore_err.txt -ErrorAction SilentlyContinue
-          Write-Host "==============================="
-          Write-Host "BORE OUTPUT:"
-          Write-Host ($output -join "`n")
-          Write-Host ($errout -join "`n")
-          Write-Host "==============================="
-          Write-Host "Username: runneradmin"
-          Write-Host "Password: P@ssw0rd123!"
-          Write-Host "==============================="
-        shell: powershell
+      - name: Setup tmate SSH
+        uses: mxschmitt/action-tmate@v3
+        timeout-minutes: 330
+        with:
+          limit-access-to-actor: false
 
       - name: Restore Data
+        if: always()
         run: |
           if (-not (Test-Path "data")) { New-Item -ItemType Directory "data" }
-          Write-Host "Data folder ready"
-        shell: powershell
-
-      - name: Keep Alive
-        run: |
-          $end = (Get-Date).AddMinutes(330)
-          while ((Get-Date) -lt $end) {
-            Write-Host "$(Get-Date) - Still running..."
-            Start-Sleep -Seconds 60
-          }
         shell: powershell
 
       - name: Save Data
