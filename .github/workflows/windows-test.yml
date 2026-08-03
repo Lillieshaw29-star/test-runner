@@ -13,17 +13,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Enable RDP
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force)
+        shell: powershell
+
+      - name: Setup Ngrok
+        run: |
+          Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath .
+          .\ngrok.exe config add-authtoken ${{ secrets.NGROK_TOKEN }}
+          Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389"
+          Start-Sleep -Seconds 10
+          $tunnels = Invoke-RestMethod http://127.0.0.1:4040/api/tunnels
+          $addr = $tunnels.tunnels[0].public_url -replace 'tcp://',''
+          Write-Host "==============================="
+          Write-Host "RDP Address: $addr"
+          Write-Host "Username: runneradmin"
+          Write-Host "Password: P@ssw0rd123!"
+          Write-Host "==============================="
+        shell: powershell
+
       - name: Restore Data
         run: |
           if (-not (Test-Path "data")) { New-Item -ItemType Directory "data" }
           Write-Host "Data folder ready"
         shell: powershell
 
-      - name: Do Work
+      - name: Keep Alive
         run: |
-          $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-          Add-Content -Path "data/log.txt" -Value "Run at $timestamp"
-          Write-Host "Working..."
           $end = (Get-Date).AddMinutes(330)
           while ((Get-Date) -lt $end) {
             Write-Host "$(Get-Date) - Still running..."
