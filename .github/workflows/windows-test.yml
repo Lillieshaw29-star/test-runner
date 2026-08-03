@@ -21,20 +21,22 @@ jobs:
           Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force)
         shell: powershell
 
-      - name: Setup Ngrok
+      - name: Setup Tunnel
         run: |
-          Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-          Expand-Archive ngrok.zip -DestinationPath .
-          .\ngrok.exe config add-authtoken ${{ secrets.NGROK_TOKEN }}
-          Start-Process -FilePath .\ngrok.exe -ArgumentList "tcp 3389"
-          Start-Sleep -Seconds 10
-          $tunnels = Invoke-RestMethod http://127.0.0.1:4040/api/tunnels
-          $addr = $tunnels.tunnels[0].public_url -replace 'tcp://',''
+          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.2/bore-v0.5.2-x86_64-pc-windows-msvc.zip" -OutFile bore.zip
+          Expand-Archive bore.zip -DestinationPath bore
+          Start-Process -FilePath .\bore\bore.exe -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput bore_out.txt -RedirectStandardError bore_err.txt
+          Start-Sleep -Seconds 5
+          $output = Get-Content bore_out.txt -ErrorAction SilentlyContinue
+          $errout = Get-Content bore_err.txt -ErrorAction SilentlyContinue
           Write-Host "==============================="
-          Write-Host "RDP Address: $addr"
+          Write-Host "BORE OUTPUT:"
+          Write-Host ($output -join "`n")
+          Write-Host ($errout -join "`n")
           Write-Host "Username: runneradmin"
           Write-Host "Password: P@ssw0rd123!"
           Write-Host "==============================="
+          Write-Host "Use Remote Desktop to connect to bore.pub:PORT shown above"
         shell: powershell
 
       - name: Restore Data
