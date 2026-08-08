@@ -9,6 +9,10 @@ concurrency:
   group: linux-vps
   cancel-in-progress: false
 
+env:
+  STATE_HOST: ghstate@84.247.173.80
+  STATE_PATH: /home/ghstate/state
+
 jobs:
   vps:
     runs-on: ubuntu-latest
@@ -24,35 +28,74 @@ jobs:
           sudo docker system prune -af 2>/dev/null || true
           df -h / /mnt
 
+      - name: SSH key (optional)
+        id: sshkey
+        env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          if [ -n "$SSH_KEY" ]; then
+            mkdir -p ~/.ssh
+            echo "$SSH_KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+            ssh-keyscan -H 84.247.173.80 >> ~/.ssh/known_hosts 2>/dev/null
+            echo "enabled=true" >> $GITHUB_OUTPUT
+            echo "✅ الحفظ الكامل على السيرفر مفعّل"
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ SERVER_SSH_KEY مش مضبوط — هيستخدم مجلد data/ في الـ repo"
+          fi
+
+      - name: Prepare work disk
+        run: |
+          sudo mkdir -p /mnt/work && sudo chown -R runner:runner /mnt/work
+          sudo apt-get install -y rsync -qq
+
+      - name: Restore from server
+        if: steps.sshkey.outputs.enabled == 'true'
+        run: |
+          rsync -az --info=stats1 "$STATE_HOST:$STATE_PATH/" /mnt/work/ \
+            || echo "أول تشغيل — مفيش نسخة سابقة"
+          du -sh /mnt/work
+
+      - name: Restore from repo
+        if: steps.sshkey.outputs.enabled != 'true'
+        run: |
+          [ -d data ] && cp -r data/* /mnt/work/ 2>/dev/null || true
+
       - name: Desktop + RDP
         env:
           RDP_PASS: ${{ secrets.RDP_PASS }}
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            --no-install-recommends xfce4 xfce4-terminal dbus-x11 xrdp
+            --no-install-recommends \
+            xfce4 xfce4-terminal dbus-x11 xrdp xorgxrdp
           echo "xfce4-session" > ~/.xsession
           sudo adduser xrdp ssl-cert
           echo "runner:$RDP_PASS" | sudo chpasswd
           sudo systemctl enable --now xrdp
           sudo systemctl restart xrdp
 
-      - name: Tailscale
+      - name: Link home folders to persistent disk
+        run: |
+          for d in Desktop Documents Downloads Pictures Videos .config .mozilla; do
+            mkdir -p "/mnt/work/home/$d"
+            rm -rf "$HOME/$d"
+            ln -s "/mnt/work/home/$d" "$HOME/$d"
+          done
+          ln -sfn /mnt/work "$HOME/work"
+
+      - name: Tailscale (RDP + SSH)
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --reset \
+          sudo tailscale up --reset --ssh \
             --authkey ${{ secrets.TS_KEY }} \
             --hostname github-runner
-          echo "==============================="
-          echo "  RDP  ->  github-runner"
-          echo "  User ->  runner"
-          echo "==============================="
-
-      - name: Restore data
-        run: |
-          sudo mkdir -p /mnt/work && sudo chown -R runner:runner /mnt/work
-          ln -sfn /mnt/work ~/work
-          [ -d data ] && cp -r data/* ~/work/ 2>/dev/null || true
+          IP=$(tailscale ip -4)
+          echo "==================================="
+          echo "  SSH : ssh runner@github-runner"
+          echo "  RDP : $IP   (user: runner)"
+          echo "==================================="
 
       # ══════ برامجك هنا ══════
       - name: Install apps
@@ -60,21 +103,33 @@ jobs:
 
       - name: Start apps
         run: |
-          # مثال: nohup python3 ~/work/bot.py > ~/work/bot.log 2>&1 &
+          # مثال: nohup python3 /mnt/work/bot.py > /mnt/work/bot.log 2>&1 &
           echo "ready"
 
-      - name: Keep alive
+      - name: Keep alive + hourly backup
         run: |
-          end=$(( $(date +%s) + 330*60 ))
+          end=$(( $(date +%s) + 320*60 ))
+          next=$(( $(date +%s) + 3600 ))
           while [ $(date +%s) -lt $end ]; do
+            if [ "${{ steps.sshkey.outputs.enabled }}" = "true" ] && [ $(date +%s) -ge $next ]; then
+              rsync -az --delete /mnt/work/ "$STATE_HOST:$STATE_PATH/" \
+                && echo "$(date '+%H:%M') حفظ دوري ✓"
+              next=$(( $(date +%s) + 3600 ))
+            fi
             echo "$(date '+%H:%M:%S') alive"
             sleep 300
           done
 
-      - name: Save data
-        if: always()
+      - name: Save to server
+        if: always() && steps.sshkey.outputs.enabled == 'true'
         run: |
-          mkdir -p data && cp -r ~/work/* data/ 2>/dev/null || true
+          rsync -az --delete --info=stats1 /mnt/work/ "$STATE_HOST:$STATE_PATH/"
+          echo "✅ اتحفظ الكل على السيرفر"
+
+      - name: Save to repo
+        if: always() && steps.sshkey.outputs.enabled != 'true'
+        run: |
+          mkdir -p data && cp -r /mnt/work/* data/ 2>/dev/null || true
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add data/
