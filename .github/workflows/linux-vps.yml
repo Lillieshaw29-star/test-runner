@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '0 */6 * * *'
 
+concurrency:
+  group: linux-vps
+  cancel-in-progress: false
+
 jobs:
   vps:
     runs-on: ubuntu-latest
@@ -39,7 +43,10 @@ jobs:
           sudo tailscale up --reset \
             --authkey ${{ secrets.TS_KEY }} \
             --hostname github-runner
-          echo "=== RDP → github-runner | user: runner ==="
+          echo "==============================="
+          echo "  RDP  ->  github-runner"
+          echo "  User ->  runner"
+          echo "==============================="
 
       - name: Restore data
         run: |
@@ -47,15 +54,21 @@ jobs:
           ln -sfn /mnt/work ~/work
           [ -d data ] && cp -r data/* ~/work/ 2>/dev/null || true
 
-      # ══ برامجك هنا ══
+      # ══════ برامجك هنا ══════
       - name: Install apps
         run: sudo apt-get install -y firefox git python3-pip
+
+      - name: Start apps
+        run: |
+          # مثال: nohup python3 ~/work/bot.py > ~/work/bot.log 2>&1 &
+          echo "ready"
 
       - name: Keep alive
         run: |
           end=$(( $(date +%s) + 330*60 ))
           while [ $(date +%s) -lt $end ]; do
-            echo "$(date '+%H:%M:%S') alive"; sleep 300
+            echo "$(date '+%H:%M:%S') alive"
+            sleep 300
           done
 
       - name: Save data
@@ -66,7 +79,9 @@ jobs:
           git config user.email "actions@github.com"
           git add data/
           git diff --staged --quiet || {
-            git commit -m "autosave $(date '+%F %H:%M')"; git push; }
+            git commit -m "autosave $(date '+%F %H:%M')"
+            git push
+          }
 
       - name: Tailscale logout
         if: always()
