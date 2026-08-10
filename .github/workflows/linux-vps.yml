@@ -33,7 +33,7 @@ jobs:
       - name: SSH key (optional)
         id: sshkey
         env:
-          SSH_KEY: ${{ secrets.STATE_KEY }}
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
         run: |
           if [ -n "$SSH_KEY" ]; then
             mkdir -p ~/.ssh
@@ -41,10 +41,10 @@ jobs:
             chmod 600 ~/.ssh/id_ed25519
             ssh-keyscan -H 84.247.173.80 >> ~/.ssh/known_hosts 2>/dev/null
             echo "enabled=true" >> $GITHUB_OUTPUT
-            echo "✅ الحفظ على السيرفر مفعّل"
+            echo "الحفظ على السيرفر مفعّل"
           else
             echo "enabled=false" >> $GITHUB_OUTPUT
-            echo "⚠️ STATE_KEY مش مضبوط — هيستخدم data/ في الـ repo"
+            echo "SERVER_SSH_KEY مش مضبوط — هيستخدم data/ في الـ repo"
           fi
 
       - name: Prepare work disk
@@ -54,7 +54,6 @@ jobs:
           ln -sfn /mnt/work "$HOME/vps"
           sudo apt-get install -y rsync -qq
 
-      # ══ إصلاح 1: نفرّق بين "مفيش نسخة" و "السيرفر مش متاح" ══
       - name: Restore from server
         id: restore
         if: steps.sshkey.outputs.enabled == 'true'
@@ -68,10 +67,10 @@ jobs:
               --exclude '.cache/' --exclude '.npm/' --exclude '.dotnet/' \
               --exclude '.credentials*' --exclude 'vps' \
               "$STATE_HOST:$STATE_PATH/home/" /home/runner/ || true
-            echo "✅ الاسترجاع تم — $(du -sh /mnt/work | cut -f1)"
+            echo "الاسترجاع تم — $(du -sh /mnt/work | cut -f1)"
           else
             echo "reachable=false" >> $GITHUB_OUTPUT
-            echo "::error::❌ السيرفر مش متاح — الحفظ هيتوقف حماية للنسخة الموجودة"
+            echo "::error::السيرفر مش متاح — الحفظ هيتوقف حماية للنسخة الموجودة"
           fi
 
       - name: Restore from repo
@@ -138,7 +137,7 @@ jobs:
               rsync -az --delete --exclude 'bulk/' \
                 --backup --backup-dir="../trash/$(date +%F)" \
                 /mnt/work/ "$STATE_HOST:$STATE_PATH/work/" \
-                && echo "$(date '+%H:%M') حفظ دوري ✓"
+                && echo "$(date '+%H:%M') حفظ دوري"
               next=$(( $(date +%s) + 3600 ))
             fi
             echo "$(date '+%H:%M:%S') alive"
@@ -148,7 +147,7 @@ jobs:
       - name: Graceful stop
         if: always()
         run: |
-          echo "── إيقاف آمن ──"
+          echo "-- إيقاف آمن --"
           timeout 120 bash /mnt/work/shutdown.sh || echo "shutdown.sh خلص/انتهت مهلته"
           MYPID=$$
           for sig in TERM KILL; do
@@ -161,7 +160,6 @@ jobs:
           done
           sync
 
-      # ══ إصلاح 2: حارس يمنع --delete من مسح النسخة ══
       - name: Safety checks
         id: safe
         if: always()
@@ -170,7 +168,6 @@ jobs:
           SIZE=$(du -sm --exclude=bulk /mnt/work 2>/dev/null | cut -f1)
           SIZE=${SIZE:-0}
           echo "عناصر: $COUNT (أقل حد $MIN_ITEMS) | حجم: ${SIZE}MB (أقصى $MAX_STATE_MB)"
-
           OK=true
           if [ "$COUNT" -lt "$MIN_ITEMS" ]; then
             OK=false
@@ -200,7 +197,7 @@ jobs:
             /home/runner/ "$STATE_HOST:$STATE_PATH/home/"
           ssh -n -o BatchMode=yes "$STATE_HOST" \
             "find '$STATE_PATH/trash' -maxdepth 1 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null; true"
-          echo "✅ اتحفظ: مساحة الشغل + مجلد البيت"
+          echo "اتحفظ: مساحة الشغل + مجلد البيت"
 
       - name: Final save to repo
         if: always() && steps.sshkey.outputs.enabled != 'true' && steps.safe.outputs.ok == 'true'
@@ -209,7 +206,6 @@ jobs:
           rsync -a --delete --exclude 'bulk/' /mnt/work/ data/ 2>/dev/null || true
           git add -A data/
 
-      # ══ إصلاح 3: نبضة تمنع GitHub من تعطيل الجدولة بعد 60 يوم ══
       - name: Heartbeat (keeps schedule alive)
         if: always()
         run: |
