@@ -32,7 +32,7 @@ jobs:
       - name: SSH key (optional)
         id: sshkey
         env:
-          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SSH_KEY: ${{ secrets.STATE_KEY }}
         run: |
           if [ -n "$SSH_KEY" ]; then
             mkdir -p ~/.ssh
