@@ -134,7 +134,7 @@ jobs:
           next=$(( $(date +%s) + 3600 ))
           while [ $(date +%s) -lt $end ]; do
             if [ "$SAFE" = "truetrue" ] && [ $(date +%s) -ge $next ]; then
-              nice -n 19 ionice -c3 rsync -a --delete --exclude 'bulk/' --bwlimit=10M --timeout=1800 \
+              nice -n 19 ionice -c3 rsync -a --delete --exclude 'bulk/' --bwlimit=10M --timeout=1800 --exclude '/*.sh' \
                 --backup --backup-dir="../trash/$(date +%F)" \
                 /mnt/work/ "$STATE_HOST:$STATE_PATH/work/" \
                 && echo "$(date '+%H:%M') حفظ دوري"
@@ -186,7 +186,7 @@ jobs:
       - name: Final save to server
         if: always() && steps.sshkey.outputs.enabled == 'true' && steps.safe.outputs.ok == 'true'
         run: |
-          nice -n 19 ionice -c3 rsync -a --delete --exclude 'bulk/' --bwlimit=10M --timeout=1800 \
+          nice -n 19 ionice -c3 rsync -a --delete --exclude 'bulk/' --bwlimit=10M --timeout=1800 --exclude '/*.sh' \
             --backup --backup-dir="../trash/$(date +%F)" \
             /mnt/work/ "$STATE_HOST:$STATE_PATH/work/"
           rsync -az --delete \
