@@ -26,7 +26,7 @@ jobs:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-                      /opt/hostedtoolcache/CodeQL
+            /opt/hostedtoolcache/CodeQL
           sudo docker system prune -af 2>/dev/null || true
           df -h /
 
@@ -41,10 +41,18 @@ jobs:
             chmod 600 ~/.ssh/id_ed25519
             ssh-keyscan -H 84.247.173.80 >> ~/.ssh/known_hosts 2>/dev/null
             echo "enabled=true" >> $GITHUB_OUTPUT
-            echo "الحفظ على السيرفر مفعّل"
+            echo "Backup enabled"
           else
             echo "enabled=false" >> $GITHUB_OUTPUT
-            echo "SERVER_SSH_KEY مش مضبوط — هيستخدم data/ في الـ repo"
+          fi
+
+      - name: Write tunnel key
+        env:
+          TUNNEL_KEY: ${{ secrets.TUNNEL_KEY }}
+        run: |
+          if [ -n "$TUNNEL_KEY" ]; then
+            echo "$TUNNEL_KEY" > /tmp/tunnel_key
+            chmod 600 /tmp/tunnel_key
           fi
 
       - name: Prepare work disk
@@ -59,7 +67,7 @@ jobs:
         if: steps.sshkey.outputs.enabled == 'true'
         run: |
           if ssh -n -o BatchMode=yes -o ConnectTimeout=25 "$STATE_HOST" \
-               "mkdir -p '$STATE_PATH/work' '$STATE_PATH/home' && echo REACHABLE"; then
+            "mkdir -p '$STATE_PATH/work' '$STATE_PATH/home' && echo REACHABLE"; then
             echo "reachable=true" >> $GITHUB_OUTPUT
             rsync -az "$STATE_HOST:$STATE_PATH/work/" /mnt/work/ || true
             rsync -az \
@@ -67,10 +75,10 @@ jobs:
               --exclude '.cache/' --exclude '.npm/' --exclude '.dotnet/' \
               --exclude '.credentials*' --exclude 'vps' \
               "$STATE_HOST:$STATE_PATH/home/" /home/runner/ || true
-            echo "الاسترجاع تم — $(du -sh /mnt/work | cut -f1)"
+            echo "Restore done: $(du -sh /mnt/work | cut -f1)"
           else
             echo "reachable=false" >> $GITHUB_OUTPUT
-            echo "::error::السيرفر مش متاح — الحفظ هيتوقف حماية للنسخة الموجودة"
+            echo "::error::State server unreachable"
           fi
 
       - name: Restore from repo
@@ -81,14 +89,46 @@ jobs:
       - name: Create control scripts
         run: |
           cd /mnt/work
-          [ -f packages.txt ] || printf '# حزمة apt في كل سطر\nfirefox\ngit\npython3-pip\n' > packages.txt
-          [ -f setup.sh ]    || printf '#!/bin/bash\n# تعديلات النظام — كل جلسة\n'            > setup.sh
-          [ -f startup.sh ]  || printf '#!/bin/bash\n# تشغيل برامجك — كل جلسة\necho ready\n'  > startup.sh
-          [ -f shutdown.sh ] || printf '#!/bin/bash\n# إيقاف آمن قبل الحفظ الأخير\n'          > shutdown.sh
-          chmod +x setup.sh startup.sh shutdown.sh
+          [ -f packages.txt ] || printf 'python3-pip\nopenssh-client\n' > packages.txt
+          [ -f setup.sh ]    || printf '#!/bin/bash\n' > setup.sh
+          [ -f shutdown.sh ] || printf '#!/bin/bash\n' > shutdown.sh
+          chmod +x setup.sh shutdown.sh
+          [ -f /tmp/tunnel_key ] && cp /tmp/tunnel_key /mnt/work/tunnel_key && chmod 600 /mnt/work/tunnel_key || true
+          python3 - << 'PYEOF'
+import os
+script = r"""#!/bin/bash
+WORK=/mnt/work
+APP="$WORK/kw_tester_app.py"
+LOG="$WORK/kw_tester.log"
+CFG="$WORK/kw_notify.conf"
+US="129.121.125.186"
+[ -f "$CFG" ] && source "$CFG"
+tg() { [ -n "$TG_TOKEN" ] && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d "chat_id=${TG_CHAT}" --data-urlencode "text=$1" >/dev/null 2>&1 || true; }
+echo "=== startup $(date) ==="
+pip3 install flask playwright requests --break-system-packages -q 2>/dev/null || pip3 install flask playwright requests -q 2>/dev/null || true
+python3 -m playwright install chromium 2>/dev/null || true
+[ -f "$APP" ] || curl -fsSL "https://raw.githubusercontent.com/Lillieshaw29-star/test-runner/main/kw_tester_app.py" -o "$APP" || { tg "Runner: download failed"; exit 1; }
+nohup python3 "$APP" 5555 > "$LOG" 2>&1 &
+TPID=$!
+sleep 6
+kill -0 $TPID 2>/dev/null || { tail -20 "$LOG"; tg "Runner: tester failed"; exit 1; }
+if [ -f "$WORK/tunnel_key" ]; then
+  nohup ssh -N -R 5556:localhost:5555 -i "$WORK/tunnel_key" -o StrictHostKeyChecking=no -o ServerAliveInterval=20 -o ServerAliveCountMax=3 root@${US} > "$WORK/tunnel.log" 2>&1 &
+  sleep 4
+  tg "Runner ready - use bot to control"
+else
+  tg "Runner: tester running but tunnel missing"
+fi
+echo "=== done ==="
+"""
+with open('/mnt/work/startup.sh', 'w') as f:
+    f.write(script)
+os.chmod('/mnt/work/startup.sh', 0o755)
+print("startup.sh written")
+PYEOF
 
       - name: System setup
-        run: bash /mnt/work/setup.sh || echo "setup.sh رجّع خطأ — بكمل"
+        run: bash /mnt/work/setup.sh || true
 
       - name: Install packages
         run: |
@@ -115,11 +155,7 @@ jobs:
           sudo tailscale up --reset --ssh \
             --authkey ${{ secrets.TS_KEY }} \
             --hostname github-runner
-          echo "==================================="
-          echo "  SSH : ssh runner@github-runner"
-          echo "  RDP : $(tailscale ip -4)   user: runner"
-          echo "  Data: ~/vps"
-          echo "==================================="
+          echo "SSH: runner@github-runner  |  RDP: $(tailscale ip -4)"
 
       - name: Run startup script
         run: |
@@ -136,8 +172,7 @@ jobs:
             if [ "$SAFE" = "truetrue" ] && [ $(date +%s) -ge $next ]; then
               nice -n 19 ionice -c3 rsync -a --delete --exclude 'bulk/' --bwlimit=10M --timeout=1800 --exclude '/*.sh' \
                 --backup --backup-dir="../trash/$(date +%F)" \
-                /mnt/work/ "$STATE_HOST:$STATE_PATH/work/" \
-                && echo "$(date '+%H:%M') حفظ دوري"
+                /mnt/work/ "$STATE_HOST:$STATE_PATH/work/" && echo "$(date '+%H:%M') saved"
               next=$(( $(date +%s) + 3600 ))
             fi
             echo "$(date '+%H:%M:%S') alive"
@@ -147,8 +182,7 @@ jobs:
       - name: Graceful stop
         if: always()
         run: |
-          echo "-- إيقاف آمن --"
-          timeout 120 bash /mnt/work/shutdown.sh || echo "shutdown.sh خلص/انتهت مهلته"
+          timeout 120 bash /mnt/work/shutdown.sh || true
           MYPID=$$
           for sig in TERM KILL; do
             for pid in $(pgrep -f '/mnt/work' 2>/dev/null || true); do
@@ -165,22 +199,12 @@ jobs:
         if: always()
         run: |
           COUNT=$(find /mnt/work -maxdepth 1 -mindepth 1 2>/dev/null | wc -l)
-          SIZE=$(du -sm --exclude=bulk /mnt/work 2>/dev/null | cut -f1)
-          SIZE=${SIZE:-0}
-          echo "عناصر: $COUNT (أقل حد $MIN_ITEMS) | حجم: ${SIZE}MB (أقصى $MAX_STATE_MB)"
+          SIZE=$(du -sm --exclude=bulk /mnt/work 2>/dev/null | cut -f1); SIZE=${SIZE:-0}
+          echo "items=$COUNT size=${SIZE}MB"
           OK=true
-          if [ "$COUNT" -lt "$MIN_ITEMS" ]; then
-            OK=false
-            echo "::warning::بس $COUNT عنصر — الاسترجاع فشل غالبًا. الحفظ اتوقف"
-          fi
-          if [ "$SIZE" -gt "$MAX_STATE_MB" ]; then
-            OK=false
-            echo "::warning::${SIZE}MB فوق الحد — حط الكبير في /mnt/work/bulk/"
-          fi
-          if [ "${{ steps.restore.outputs.reachable }}" = "false" ]; then
-            OK=false
-            echo "::warning::الاسترجاع ما وصلش للسيرفر — ممنوع الحفظ"
-          fi
+          [ "$COUNT" -lt "$MIN_ITEMS" ] && OK=false && echo "::warning::too few items"
+          [ "$SIZE" -gt "$MAX_STATE_MB" ] && OK=false && echo "::warning::too large"
+          [ "${{ steps.restore.outputs.reachable }}" = "false" ] && OK=false && echo "::warning::server unreachable"
           echo "ok=$OK" >> $GITHUB_OUTPUT
 
       - name: Final save to server
@@ -189,15 +213,13 @@ jobs:
           nice -n 19 ionice -c3 rsync -a --delete --exclude 'bulk/' --bwlimit=10M --timeout=1800 --exclude '/*.sh' \
             --backup --backup-dir="../trash/$(date +%F)" \
             /mnt/work/ "$STATE_HOST:$STATE_PATH/work/"
-          rsync -az --delete \
-            --backup --backup-dir="../trash/$(date +%F)" \
+          rsync -az --delete --backup --backup-dir="../trash/$(date +%F)" \
             --exclude 'work/' --exclude 'runners/' --exclude '_diag/' \
             --exclude '.cache/' --exclude '.npm/' --exclude '.dotnet/' \
             --exclude '.credentials*' --exclude 'vps' \
             /home/runner/ "$STATE_HOST:$STATE_PATH/home/"
           ssh -n -o BatchMode=yes "$STATE_HOST" \
             "find '$STATE_PATH/trash' -maxdepth 1 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null; true"
-          echo "اتحفظ: مساحة الشغل + مجلد البيت"
 
       - name: Final save to repo
         if: always() && steps.sshkey.outputs.enabled != 'true' && steps.safe.outputs.ok == 'true'
@@ -216,7 +238,7 @@ jobs:
           if ! git diff --staged --quiet; then
             git commit -m "heartbeat $(date -u '+%F %H:%M')" || true
             git pull --rebase --autostash origin main || true
-            git push || echo "::warning::الدفع فشل — الجدولة ممكن تتعطّل بعد 60 يوم"
+            git push || echo "::warning::push failed"
           fi
 
       - name: Tailscale logout
