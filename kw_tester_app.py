@@ -969,33 +969,52 @@ def _mem_avail_mb():
         pass
     return 1024
 
+def _loadavg1():
+    try:
+        with open('/proc/loadavg') as f:
+            return float(f.read().split()[0])
+    except Exception:
+        return 0.0
+
+def _cpu_count():
+    try:
+        return os.cpu_count() or 4
+    except Exception:
+        return 4
+
+HARD_CAP = 25   # سقف صارم لكل رنر — يمنع الجموح مهما حصل
+
 async def _autoscaler(max_target):
-    """يعدّل _autoscale['target'] كل بضع ثوانٍ حسب CPU/RAM/الأخطاء."""
-    _autoscale['max'] = max_target
+    """يعدّل _autoscale['target'] — الأولوية لبقاء الرنر حيًّا مش عصر آخر متصفح."""
+    cores = _cpu_count()
+    _autoscale['max'] = min(max_target, HARD_CAP)
     _autoscale['target'] = min(2, max_target)   # يبدأ صغير ويصعد تدريجياً
     _cpu_percent()                              # عيّنة أولى للـ delta
     await asyncio.sleep(2)
     while _state.get('running') and not _state['stop']:
-        cpu = _cpu_percent()
-        mem = _mem_avail_mb()
+        cpu  = _cpu_percent()
+        mem  = _mem_avail_mb()
+        load = _loadavg1()
         with _lock:
             done = _stats['ok'] + _stats['err']
             errp = (_stats['err'] / done * 100) if done >= 8 else 0.0
-        _autoscale['cpu'] = round(cpu, 0)
-        _autoscale['mem'] = mem
+        _autoscale['cpu']  = round(cpu, 0)
+        _autoscale['mem']  = mem
+        _autoscale['load'] = round(load, 1)
         tgt = _autoscale['target']
-        # ضغط → هدّي (نسمح بضغط أعلى لأن المتصفحات معظم الوقت بتتفرّج مش بتحمّل)
-        if cpu > 92 or mem < 500 or errp > 20:
+        # باك-أوف مبكر للحفاظ على استجابة الرنر (وكيل GitHub لازم يفضل يرد وإلا يعتبره ميت)
+        # نراقب الـload مش الـCPU بس — الـload بيمسك ازدحام الطابور وانتظار I/O
+        if cpu > 82 or load > cores * 2.2 or mem < 700 or errp > 20:
             new = max(2, tgt - 2)
-        # مساحة → زوّد متصفح
-        elif cpu < 78 and mem > 900 and errp < 8:
-            new = min(max_target, tgt + 1)
+        # مساحة آمنة → زوّد متصفح واحد بحذر
+        elif cpu < 68 and load < cores * 1.5 and mem > 1000 and errp < 8:
+            new = min(_autoscale['max'], tgt + 1)
         else:
             new = tgt
         if new != tgt:
             _autoscale['target'] = new
             arrow = '▲' if new > tgt else '▼'
-            add_log(f'⚙️ {arrow} {new} متصفح  (CPU {cpu:.0f}% · RAM {mem}MB · خطأ {errp:.0f}%)')
+            add_log(f'⚙️ {arrow} {new} متصفح  (CPU {cpu:.0f}% · حِمل {load:.1f}/{cores} · RAM {mem}MB · خطأ {errp:.0f}%)')
         await asyncio.sleep(4)
 
 # ===== Master runner =====
