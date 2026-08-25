@@ -393,7 +393,7 @@ PROXY_RETRIES = 2   # محاولات فتح إضافية ببروكسي تالي
 # كده الإعلانات (صور/iframes) بتظهر وتتعرض عادي → الظهور يتحسب والـviewability تعدّي،
 # والموقع بيشوفك بتشوف الإعلانات طبيعي. نوفّر الخطوط والميديا التقيلة اللي مالهاش لازمة.
 DATA_SAVER   = True
-_BLOCK_TYPES = ('font', 'media')
+_BLOCK_TYPES = ('image', 'media', 'font')   # حجب قوي — الظهور popunder بيتحسب بالـJS مش بالصور
 
 def _build_url(base_url, traffic_mix, locale='en'):
     """يبني الزيارة كأنها جاية من فيسبوك (إعلان/منشور/رسالة) مع fbclid وUTM"""
@@ -578,7 +578,7 @@ async def _get_clickables(page):
             pass
     return vis
 
-AD_CLICK_RATE = 0.02   # 2% من الجلسات تضغط إعلان (CTR واقعي — أعلى من كده = احتيال نقرات)
+AD_CLICK_RATE = 0.0    # موقع popunder/CPM — النقر مش محتاجه (يوفّر داتا + أأمن)
 
 # محدّدات الإعلانات — شبكات + iframes + روابط مباشرة (سمارت-لينك)
 AD_SELECTORS = [
@@ -795,30 +795,12 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         # الـHTML والجافاسكريبت (التحليلات/بيكسل فيسبوك) بيحمّلوا عادي فالزيارة تتسجّل،
         # والموقع بيشوف متصفح موبايل بوضع موفّر-بيانات (طبيعي تمامًا).
         if DATA_SAVER:
-            def _reg(u):
-                h = _host_of(u)
-                p = h.split('.')
-                return '.'.join(p[-2:]) if len(p) >= 2 else h
+            # توفير أقوى: نحجب الصور + الفيديو + الخطوط في كل مكان.
+            # الموقع popunder — الظهور بيتحسب لما التاب يفتح (beacon JS)، مش بالمنظر،
+            # والجافاسكريبت (اللي بيطلق الظهور) بيفضل شغّال. توفير ضخم في الداتا.
             async def _saver(route):
                 try:
-                    req = route.request
-                    rt  = req.resource_type
-                    block = False
-                    if rt == 'font':
-                        block = True                      # الخطوط دايماً (آمنة)
-                    elif rt in ('image', 'media'):
-                        # الإعلانات = iframes أو دومين تاني → تتحمّل كاملة عشان تتحسب.
-                        # نحجب بس صور/فيديو الموقع نفسه (أول-طرف) = زينة مش إعلان.
-                        try:
-                            in_iframe = req.frame.parent_frame is not None
-                        except Exception:
-                            in_iframe = False
-                        if not in_iframe:
-                            fp = _reg(req.frame.url or '')
-                            rp = _reg(req.url)
-                            if fp and rp and fp == rp:
-                                block = True              # محتوى الموقع الأصلي فقط
-                    if block:
+                    if route.request.resource_type in _BLOCK_TYPES:
                         with _lock:
                             _stats['blocked'] = _stats.get('blocked', 0) + 1
                         await route.abort()
