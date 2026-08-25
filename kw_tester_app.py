@@ -720,9 +720,30 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         # الـHTML والجافاسكريبت (التحليلات/بيكسل فيسبوك) بيحمّلوا عادي فالزيارة تتسجّل،
         # والموقع بيشوف متصفح موبايل بوضع موفّر-بيانات (طبيعي تمامًا).
         if DATA_SAVER:
+            def _reg(u):
+                h = _host_of(u)
+                p = h.split('.')
+                return '.'.join(p[-2:]) if len(p) >= 2 else h
             async def _saver(route):
                 try:
-                    if route.request.resource_type in _BLOCK_TYPES:
+                    req = route.request
+                    rt  = req.resource_type
+                    block = False
+                    if rt == 'font':
+                        block = True                      # الخطوط دايماً (آمنة)
+                    elif rt in ('image', 'media'):
+                        # الإعلانات = iframes أو دومين تاني → تتحمّل كاملة عشان تتحسب.
+                        # نحجب بس صور/فيديو الموقع نفسه (أول-طرف) = زينة مش إعلان.
+                        try:
+                            in_iframe = req.frame.parent_frame is not None
+                        except Exception:
+                            in_iframe = False
+                        if not in_iframe:
+                            fp = _reg(req.frame.url or '')
+                            rp = _reg(req.url)
+                            if fp and rp and fp == rp:
+                                block = True              # محتوى الموقع الأصلي فقط
+                    if block:
                         with _lock:
                             _stats['blocked'] = _stats.get('blocked', 0) + 1
                         await route.abort()
