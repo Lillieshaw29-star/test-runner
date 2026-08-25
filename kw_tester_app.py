@@ -838,11 +838,11 @@ async def _autoscaler(max_target):
         _autoscale['cpu'] = round(cpu, 0)
         _autoscale['mem'] = mem
         tgt = _autoscale['target']
-        # ضغط → هدّي
-        if cpu > 85 or mem < 500 or errp > 20:
+        # ضغط → هدّي (نسمح بضغط أعلى لأن المتصفحات معظم الوقت بتتفرّج مش بتحمّل)
+        if cpu > 92 or mem < 500 or errp > 20:
             new = max(2, tgt - 2)
         # مساحة → زوّد متصفح
-        elif cpu < 70 and mem > 900 and errp < 8:
+        elif cpu < 78 and mem > 900 and errp < 8:
             new = min(max_target, tgt + 1)
         else:
             new = tgt
