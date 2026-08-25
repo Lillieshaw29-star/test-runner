@@ -287,12 +287,17 @@ DEVICES = [
 
 # locale + timezone matched per proxy country
 COUNTRY_PROFILES = {
-    'gb': {'locales': ['en-GB','en'], 'tz': 'Europe/London'},
-    'us': {'locales': ['en-US','en'], 'tz': 'America/New_York'},
-    'ca': {'locales': ['en-CA','fr-CA','en'], 'tz': 'America/Toronto'},
-    'au': {'locales': ['en-AU','en'], 'tz': 'Australia/Sydney'},
-    'de': {'locales': ['de-DE','de','en'], 'tz': 'Europe/Berlin'},
-    'default': {'locales': ['ar-EG','ar-SA','ar-AE','ar-JO','ar-MA'], 'tz': 'Africa/Cairo'},
+    'gb': {'locales': ['en-GB','en'],        'tz': 'Europe/London'},
+    'us': {'locales': ['en-US','en'],        'tz': 'America/New_York'},
+    'ca': {'locales': ['en-CA','fr-CA','en'],'tz': 'America/Toronto'},
+    'au': {'locales': ['en-AU','en'],        'tz': 'Australia/Sydney'},
+    'de': {'locales': ['de-DE','de','en'],   'tz': 'Europe/Berlin'},
+    'fr': {'locales': ['fr-FR','fr','en'],   'tz': 'Europe/Paris'},
+    'nl': {'locales': ['nl-NL','nl','en'],   'tz': 'Europe/Amsterdam'},
+    'it': {'locales': ['it-IT','it','en'],   'tz': 'Europe/Rome'},
+    'es': {'locales': ['es-ES','es','en'],   'tz': 'Europe/Madrid'},
+    'se': {'locales': ['sv-SE','sv','en'],   'tz': 'Europe/Stockholm'},
+    'default': {'locales': ['en-US','en'],   'tz': 'America/New_York'},  # افتراضي إنجليزي (مش عربي) للترافيك الغربي
 }
 
 LOCALES   = ['ar-EG','ar-SA','ar-AE','ar-JO','ar-MA']
