@@ -6,7 +6,7 @@ on:
     - cron: '*/20 * * * *'
 
 concurrency:
-  group: linux-vps
+  group: linux-vps-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'sched' }}
   cancel-in-progress: false
 
 env:
