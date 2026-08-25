@@ -617,9 +617,18 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
     if jitter > 0:
         await asyncio.sleep(random.uniform(0, jitter))
 
-    # شخصية الجلسة (#4): تحدّد مدة التصفّح وميل الأفعال
-    persona, pmin, pmax = random.choice(PERSONAS)
-    duration = random.uniform(duration * pmin, duration * pmax)
+    # شخصية الجلسة (#4): تحدّد ميل الأفعال + مكان المدة داخل المدى
+    # المدى = من نص الإعداد لكامله (إعداد 40 → مدى 20-40 ث)، والشخصية بتحدّد المكان
+    persona, _pmn, _pmx = random.choice(PERSONAS)
+    d_max = max(8.0, float(duration))
+    d_min = d_max * 0.5
+    span  = d_max - d_min
+    if persona == 'bouncer':          # سريع → النص الأدنى من المدى
+        duration = random.uniform(d_min, d_min + span * 0.5)
+    elif persona == 'reader':         # قارئ → النص الأعلى من المدى
+        duration = random.uniform(d_min + span * 0.5, d_max)
+    else:                             # ماسح → أي مكان في المدى
+        duration = random.uniform(d_min, d_max)
 
     # زائر عائد؟ (#2) — يبدأ من كوكيز محفوظة عشان يبان returning للموقع
     reuse_state = _pick_ctx_state() if random.random() < RETURNING_RATE else None
