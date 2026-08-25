@@ -791,6 +791,67 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             try: await browser.close()
             except: pass
 
+# ===== Adaptive autoscaler (تحكّم تلقائي في عدد المتصفحات حسب الضغط) =====
+# المتصفحات تقوم واحد ورا التاني بالتدريج؛ لو فيه مساحة يزوّد لحد السقف، ولو ضغط يهدّي.
+_autoscale = {'target': 0, 'max': 0, 'cpu': 0.0, 'mem': 0}
+_cpu_prev  = {'total': 0, 'idle': 0}
+
+def _cpu_percent():
+    """نسبة استخدام المعالج من فرق /proc/stat بين نداءين (لينكس)."""
+    try:
+        with open('/proc/stat') as f:
+            v = list(map(int, f.readline().split()[1:]))
+        idle  = v[3] + (v[4] if len(v) > 4 else 0)
+        total = sum(v)
+        dt = total - _cpu_prev['total']
+        di = idle  - _cpu_prev['idle']
+        _cpu_prev['total'] = total
+        _cpu_prev['idle']  = idle
+        if dt <= 0:
+            return 0.0
+        return max(0.0, min(100.0, 100.0 * (1 - di / dt)))
+    except Exception:
+        return 50.0
+
+def _mem_avail_mb():
+    try:
+        with open('/proc/meminfo') as f:
+            for line in f:
+                if line.startswith('MemAvailable:'):
+                    return int(line.split()[1]) // 1024
+    except Exception:
+        pass
+    return 1024
+
+async def _autoscaler(max_target):
+    """يعدّل _autoscale['target'] كل بضع ثوانٍ حسب CPU/RAM/الأخطاء."""
+    _autoscale['max'] = max_target
+    _autoscale['target'] = min(2, max_target)   # يبدأ صغير ويصعد تدريجياً
+    _cpu_percent()                              # عيّنة أولى للـ delta
+    await asyncio.sleep(2)
+    while _state.get('running') and not _state['stop']:
+        cpu = _cpu_percent()
+        mem = _mem_avail_mb()
+        with _lock:
+            done = _stats['ok'] + _stats['err']
+            errp = (_stats['err'] / done * 100) if done >= 8 else 0.0
+        _autoscale['cpu'] = round(cpu, 0)
+        _autoscale['mem'] = mem
+        tgt = _autoscale['target']
+        # ضغط → هدّي
+        if cpu > 85 or mem < 500 or errp > 20:
+            new = max(2, tgt - 2)
+        # مساحة → زوّد متصفح
+        elif cpu < 70 and mem > 900 and errp < 8:
+            new = min(max_target, tgt + 1)
+        else:
+            new = tgt
+        if new != tgt:
+            _autoscale['target'] = new
+            arrow = '▲' if new > tgt else '▼'
+            add_log(f'⚙️ {arrow} {new} متصفح  (CPU {cpu:.0f}% · RAM {mem}MB · خطأ {errp:.0f}%)')
+        await asyncio.sleep(4)
+
 # ===== Master runner =====
 async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, traffic_mix=True, goto_timeout=90000):
     _state['stop'] = False
@@ -818,35 +879,49 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
             return
         add_log('✅ الرابط حي — بدء التشغيل الكامل')
 
-        sem = asyncio.Semaphore(concurrency)
-        RAMP_GAP       = 0.4    # تصاعد تدريجي في البداية (#5) — ثانية لكل جلسة أولى
-        OFFPEAK_SPREAD = 6.0    # أقصى تباعد إضافي في ساعات الهدوء (#3)
         w0 = _hour_weight()
         add_log(f'⏰ وزن الساعة {time.localtime().tm_hour:02d}:00 = {w0:.2f} '
                 f'({"ذروة" if w0>=0.8 else "هدوء" if w0<=0.3 else "عادي"})')
 
-        async def bounded(i):
-            if _state['stop']:
-                return
-            if err_thresh > 0:
-                with _lock:
-                    done = _stats['ok'] + _stats['err']
-                    if done >= 10 and _stats['err'] / done * 100 >= err_thresh:
-                        _state['stop'] = True
-                        return
-            # تصاعد تدريجي (#5): أول موجة جلسات تدخل مبعثرة بدل دفعة واحدة
-            if i <= concurrency:
-                await asyncio.sleep(i * RAMP_GAP)
-            # تشكيل حسب ساعة اليوم (#3): تباعد أكبر وقت الهدوء = RPS أقل طبيعياً
-            w = _hour_weight()
-            if w < 1.0:
-                await asyncio.sleep(random.uniform(0, (1.0 - w) * OFFPEAK_SPREAD))
-            async with sem:
-                if _state['stop']:
-                    return
-                await run_session(pw, url, _pick(i), duration, i, jitter, traffic_mix, goto_timeout, pick_proxy=_rand_proxy)
+        # السقف الأقصى للمتصفحات المتزامنة (الإعداد = السقف؛ الـautoscaler يوصلّه تدريجياً)
+        max_target = max(1, int(concurrency))
+        add_log(f'🚀 تشغيل تكيّفي — يقوم متصفح ورا التاني، يزوّد لحد {max_target} لو فيه مساحة، ويهدّي لو ضغط')
 
-        await asyncio.gather(*[bounded(i) for i in range(1, count+1)])
+        # يشغّل الـautoscaler بالتوازي مع مطلِق الجلسات
+        scaler = asyncio.create_task(_autoscaler(max_target))
+
+        SPAWN_GAP = 0.6          # فجوة القيام بين متصفح والتالي (قيام تدريجي، مش دفعة)
+        inflight  = set()
+        launched  = 0
+        try:
+            while launched < count and not _state['stop']:
+                # إيقاف تلقائي لو الأخطاء عدّت الحد
+                if err_thresh > 0:
+                    with _lock:
+                        done = _stats['ok'] + _stats['err']
+                        if done >= 10 and _stats['err'] / done * 100 >= err_thresh:
+                            _state['stop'] = True
+                            add_log(f'⛔ إيقاف تلقائي: تجاوز حد الأخطاء {err_thresh}%')
+                            break
+                tgt = _autoscale['target'] or 1
+                # يطلق جلسات لحد ما العدد الطائر يوصل للهدف الحالي
+                while len(inflight) < tgt and launched < count and not _state['stop']:
+                    launched += 1
+                    t = asyncio.create_task(
+                        run_session(pw, url, _pick(launched), duration, launched, 0,
+                                    traffic_mix, goto_timeout, pick_proxy=_rand_proxy))
+                    inflight.add(t)
+                    t.add_done_callback(inflight.discard)
+                    # تباعد وقت الهدوء (#3) مضروب في فجوة القيام
+                    w = _hour_weight()
+                    gap = SPAWN_GAP + (random.uniform(0, (1.0 - w) * 4.0) if w < 1.0 else 0)
+                    await asyncio.sleep(gap)
+                await asyncio.sleep(0.4)
+        finally:
+            _state['stop'] = True if _state['stop'] else _state['stop']
+            if inflight:
+                await asyncio.gather(*list(inflight), return_exceptions=True)
+            scaler.cancel()
 
     _state['running'] = False
 
@@ -1002,6 +1077,7 @@ def stats_sse():
                     'codes': dict(_stats['codes']),
                     'devices': dict(_stats['devices']),
                     'rps_hist': list(_stats['rps_hist']),
+                    'scale': dict(_autoscale),
                     'log': list(_stats['log'][-20:]),
                 }
             yield f'data: {json.dumps(payload, ensure_ascii=False)}\n\n'
