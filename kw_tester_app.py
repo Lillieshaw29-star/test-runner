@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# /opt/kw_tester_app.py  â€”  KW Mobile Tester v2
+# /opt/kw_tester_app.py  —  KW Mobile Tester v2
 
 from flask import Flask, render_template_string, request, jsonify, Response
 from playwright.async_api import async_playwright
@@ -43,7 +43,8 @@ _lock = threading.Lock()
 def parse_proxy(raw):
     if not raw:
         return None
-    raw = raw.strip()
+    import uuid
+    raw = raw.strip().replace('RANDOM', uuid.uuid4().hex[:10])
     scheme, rest = raw.split('://', 1) if '://' in raw else ('http', raw)
     if '@' in rest:
         creds, hostpart = rest.rsplit('@', 1)
@@ -69,57 +70,78 @@ def add_log(msg):
 
 # ===== Devices & constants =====
 DEVICES = [
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1','vw':390,'vh':844,'dpr':3.0,'name':'iPhone 15'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36','vw':412,'vh':915,'dpr':3.5,'name':'Pixel 8 Pro'},
-    {'ua':'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36','vw':360,'vh':780,'dpr':3.0,'name':'Samsung S23'},
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0.6478.153 Mobile/15E148 Safari/604.1','vw':375,'vh':812,'dpr':2.0,'name':'iPhone 12'},
-    {'ua':'Mozilla/5.0 (Linux; Android 12; Redmi Note 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36','vw':393,'vh':851,'dpr':2.75,'name':'Redmi Note 11'},
-    {'ua':'Mozilla/5.0 (Linux; Android 13; OPPO Reno8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36','vw':412,'vh':892,'dpr':2.625,'name':'OPPO Reno8'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-A546B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36','vw':360,'vh':800,'dpr':2.0,'name':'Samsung A54'},
-    {'ua':'Mozilla/5.0 (Linux; Android 13; 2201116TG) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36','vw':393,'vh':873,'dpr':2.75,'name':'Xiaomi 12T'},
-    {'ua':'Mozilla/5.0 (Linux; Android 12; vivo V23 5G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36','vw':392,'vh':848,'dpr':3.0,'name':'Vivo V23'},
-    {'ua':'Mozilla/5.0 (Linux; Android 12; Huawei P50 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.88 Mobile HuaweiBrowser/13.0 Safari/537.36','vw':360,'vh':780,'dpr':3.0,'name':'Huawei P50'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-F946B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36','vw':390,'vh':882,'dpr':2.0,'name':'Galaxy Z Fold5'},
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Mobile/15E148 Safari/604.1','vw':430,'vh':932,'dpr':3.0,'name':'iPhone 15 Pro Max'},
+    # iPhones — platform=iPhone, vendor=Apple Computer, Inc., no chrome object
+    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1','vw':390,'vh':844,'dpr':3.0,'name':'iPhone 15','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari'},
+    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1','vw':375,'vh':812,'dpr':2.0,'name':'iPhone 12','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari'},
+    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1','vw':430,'vh':932,'dpr':3.0,'name':'iPhone 15 Pro Max','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari'},
+    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/135.0.7049.83 Mobile/15E148 Safari/604.1','vw':390,'vh':844,'dpr':3.0,'name':'iPhone 15 Chrome','platform':'iPhone','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"'},
+    # Android — platform=Linux aarch64, vendor=Google Inc.
+    {'ua':'Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':412,'vh':915,'dpr':3.5,'name':'Pixel 9 Pro','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36','vw':360,'vh':780,'dpr':3.0,'name':'Samsung S24','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="134", "Google Chrome";v="134", "Not-A.Brand";v="99"'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; Redmi Note 13 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.137 Mobile Safari/537.36','vw':393,'vh':851,'dpr':2.75,'name':'Redmi Note 13','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="133", "Google Chrome";v="133", "Not-A.Brand";v="99"'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-A556B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':360,'vh':800,'dpr':2.0,'name':'Samsung A55','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; 23127PN0CC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6834.163 Mobile Safari/537.36','vw':393,'vh':873,'dpr':2.75,'name':'Xiaomi 14T','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="132", "Google Chrome";v="132", "Not-A.Brand";v="99"'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; CPH2609) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36','vw':412,'vh':892,'dpr':2.625,'name':'OPPO Reno12','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="134", "Google Chrome";v="134", "Not-A.Brand";v="99"'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-F956B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':390,'vh':882,'dpr':2.0,'name':'Galaxy Z Fold6','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; V2309) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.137 Mobile Safari/537.36','vw':392,'vh':848,'dpr':3.0,'name':'Vivo V30','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="133", "Google Chrome";v="133", "Not-A.Brand";v="99"'},
 ]
+
+# locale + timezone matched per proxy country
+COUNTRY_PROFILES = {
+    'gb': {'locales': ['en-GB','en'], 'tz': 'Europe/London'},
+    'us': {'locales': ['en-US','en'], 'tz': 'America/New_York'},
+    'ca': {'locales': ['en-CA','fr-CA','en'], 'tz': 'America/Toronto'},
+    'au': {'locales': ['en-AU','en'], 'tz': 'Australia/Sydney'},
+    'de': {'locales': ['de-DE','de','en'], 'tz': 'Europe/Berlin'},
+    'default': {'locales': ['ar-EG','ar-SA','ar-AE','ar-JO','ar-MA'], 'tz': 'Africa/Cairo'},
+}
 
 LOCALES   = ['ar-EG','ar-SA','ar-AE','ar-JO','ar-MA']
 
-# ÙƒÙ„ Ù…ØµØ¯Ø±: (referer, utm_source, utm_medium, utm_campaign_prefix)
-TRAFFIC_SOURCES = [
-    # Google organic
-    ('https://www.google.com/search?q=ØªØ·Ø¨ÙŠÙ‚+ØªØ³ÙˆÙŠÙ‚+Ø³ÙˆØ´ÙŠØ§Ù„+Ù…ÙŠØ¯ÙŠØ§',  'google', 'organic', 'search'),
-    ('https://www.google.com/search?q=social+media+management',     'google', 'organic', 'search'),
-    ('https://www.google.com/search?q=Ø§Ø¯Ø§Ø±Ø©+ØµÙØ­Ø§Øª+ÙÙŠØ³Ø¨ÙˆÙƒ',         'google', 'organic', 'search'),
-    ('https://www.google.com/search?q=best+social+media+tool',      'google', 'organic', 'search'),
-    # Google CPC
-    ('https://www.google.com/',                             'google',    'cpc',       'ads'),
-    # Facebook
-    ('https://www.facebook.com/',                           'facebook',  'social',    'fb'),
-    ('https://l.facebook.com/',                             'facebook',  'social',    'fb'),
-    ('https://m.facebook.com/',                             'facebook',  'social',    'fb'),
-    # Instagram
-    ('https://www.instagram.com/',                          'instagram', 'social',    'ig'),
-    ('https://l.instagram.com/',                            'instagram', 'social',    'ig'),
-    # Twitter/X
-    ('https://t.co/',                                       'twitter',   'social',    'tw'),
-    ('https://x.com/',                                      'twitter',   'social',    'tw'),
-    # YouTube
-    ('https://www.youtube.com/',                            'youtube',   'social',    'yt'),
-    # WhatsApp
-    ('https://web.whatsapp.com/',                           'whatsapp',  'social',    'wa'),
-    # Direct (Ø¨Ø¯ÙˆÙ† referer)
-    ('',                                                    '',          '',          ''),
-    ('',                                                    '',          '',          ''),
+# مصادر حسب اللغة: en=English markets, ar=Arabic markets
+TRAFFIC_SOURCES_EN = [
+    ('https://www.google.com/search?q=best+earn+money+online',      'google',    'organic', 'search'),
+    ('https://www.google.com/search?q=how+to+make+money+online',    'google',    'organic', 'search'),
+    ('https://www.google.com/search?q=online+income+ideas',         'google',    'organic', 'search'),
+    ('https://www.google.com/search?q=passive+income+apps',         'google',    'organic', 'search'),
+    ('https://www.google.com/',                                      'google',    'cpc',     'ads'),
+    ('https://www.facebook.com/',                                    'facebook',  'social',  'fb'),
+    ('https://l.facebook.com/',                                      'facebook',  'social',  'fb'),
+    ('https://www.instagram.com/',                                   'instagram', 'social',  'ig'),
+    ('https://t.co/',                                                'twitter',   'social',  'tw'),
+    ('https://x.com/',                                               'twitter',   'social',  'tw'),
+    ('https://www.youtube.com/',                                     'youtube',   'social',  'yt'),
+    ('https://www.tiktok.com/',                                      'tiktok',    'social',  'tt'),
+    ('https://www.reddit.com/',                                      'reddit',    'social',  'rd'),
+    ('',                                                             '',          '',        ''),
+    ('',                                                             '',          '',        ''),
 ]
+TRAFFIC_SOURCES_AR = [
+    ('https://www.google.com/search?q=تطبيق+تسويق+سوشيال+ميديا',   'google',   'organic', 'search'),
+    ('https://www.google.com/search?q=ادارة+صفحات+فيسبوك',          'google',   'organic', 'search'),
+    ('https://www.google.com/search?q=ربح+من+الانترنت',             'google',   'organic', 'search'),
+    ('https://www.google.com/',                                       'google',   'cpc',     'ads'),
+    ('https://www.facebook.com/',                                     'facebook', 'social',  'fb'),
+    ('https://l.facebook.com/',                                       'facebook', 'social',  'fb'),
+    ('https://m.facebook.com/',                                       'facebook', 'social',  'fb'),
+    ('https://www.instagram.com/',                                    'instagram','social',  'ig'),
+    ('https://t.co/',                                                 'twitter',  'social',  'tw'),
+    ('https://www.youtube.com/',                                      'youtube',  'social',  'yt'),
+    ('https://web.whatsapp.com/',                                     'whatsapp', 'social',  'wa'),
+    ('',                                                              '',         '',        ''),
+    ('',                                                              '',         '',        ''),
+]
+# legacy alias
+TRAFFIC_SOURCES = TRAFFIC_SOURCES_EN
 
 UTM_CONTENTS = ['banner','story','reel','post','feed','link','bio']
 
-def _build_url(base_url, traffic_mix):
-    """ÙŠØ¶ÙŠÙ UTM Ø¹Ø´ÙˆØ§Ø¦ÙŠ ÙˆÙŠØ±Ø¬Ø¹ (final_url, referer)"""
+def _build_url(base_url, traffic_mix, locale='en'):
+    """يضيف UTM عشوائي ويرجع (final_url, referer)"""
     if not traffic_mix:
         return base_url, random.choice(['https://www.google.com/', ''])
-    src = random.choice(TRAFFIC_SOURCES)
+    pool = TRAFFIC_SOURCES_AR if locale.startswith('ar') else TRAFFIC_SOURCES_EN
+    src = random.choice(pool)
     referer, utm_src, utm_med, utm_camp = src
     if not utm_src:
         return base_url, ''
@@ -131,18 +153,118 @@ def _build_url(base_url, traffic_mix):
                 f'&utm_content={content}')
     return final, referer
 STEALTH_JS = """
+(function(){
+// --- webdriver ---
 Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
+
+// --- plugins ---
 Object.defineProperty(navigator,'plugins',{get:()=>[1,2,3,4,5]});
-Object.defineProperty(navigator,'languages',{get:()=>['ar-EG','ar','en-US','en']});
-Object.defineProperty(navigator,'platform',{get:()=>'Linux aarch64'});
-window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}};
+
+// --- languages + locale ---
+Object.defineProperty(navigator,'language',{get:()=>'__LOCALE__'});
+Object.defineProperty(navigator,'languages',{get:()=>['__LOCALE__','__LOCALE2__','en']});
+
+// --- platform per device ---
+Object.defineProperty(navigator,'platform',{get:()=>'__PLATFORM__'});
+
+// --- vendor per engine ---
+Object.defineProperty(navigator,'vendor',{get:()=>'__VENDOR__'});
+
+// --- hardware concurrency (2-8 random) ---
+Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>[2,4,6,8][Math.floor(Math.random()*4)]});
+
+// --- device memory ---
+Object.defineProperty(navigator,'deviceMemory',{get:()=>[2,4,6,8][Math.floor(Math.random()*4)]});
+
+// --- touch ---
+Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});
+
+// --- chrome runtime (chrome engine only) ---
+if('__ENGINE__'==='chrome'){
+  window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}};
+}
+
+// --- permissions ---
 const _orig=window.navigator.permissions.query;
 window.navigator.permissions.query=(p)=>p.name==='notifications'?Promise.resolve({state:'denied'}):_orig(p);
+
+// --- WebRTC leak block ---
+['RTCPeerConnection','webkitRTCPeerConnection'].forEach(k=>{
+  if(!window[k]) return;
+  const _C=window[k];
+  window[k]=function(cfg){
+    if(cfg&&cfg.iceServers) cfg.iceServers=[];
+    return new _C(cfg);
+  };
+  window[k].prototype=_C.prototype;
+});
+
+// --- Canvas noise ---
+const _toDataURL=HTMLCanvasElement.prototype.toDataURL;
+const _getImageData=CanvasRenderingContext2D.prototype.getImageData;
+HTMLCanvasElement.prototype.toDataURL=function(){
+  const ctx=this.getContext('2d');
+  if(ctx&&this.width>0&&this.height>0){
+    const img=_getImageData.call(ctx,0,0,this.width,this.height);
+    for(let i=0;i<img.data.length;i+=17) img.data[i]^=1;
+    ctx.putImageData(img,0,0);
+  }
+  return _toDataURL.apply(this,arguments);
+};
+
+// --- WebGL fingerprint noise ---
+const _getParam=WebGLRenderingContext.prototype.getParameter;
+WebGLRenderingContext.prototype.getParameter=function(p){
+  if(p===37445) return 'ARM';
+  if(p===37446) return 'Mali-G78';
+  return _getParam.call(this,p);
+};
+if(window.WebGL2RenderingContext){
+  const _g2=WebGL2RenderingContext.prototype.getParameter;
+  WebGL2RenderingContext.prototype.getParameter=function(p){
+    if(p===37445) return 'ARM';
+    if(p===37446) return 'Mali-G78';
+    return _g2.call(this,p);
+  };
+}
+
+// --- Screen match viewport ---
+Object.defineProperty(screen,'width',{get:()=>window.innerWidth});
+Object.defineProperty(screen,'height',{get:()=>window.innerHeight});
+Object.defineProperty(screen,'availWidth',{get:()=>window.innerWidth});
+Object.defineProperty(screen,'availHeight',{get:()=>window.innerHeight-50});
+Object.defineProperty(screen,'colorDepth',{get:()=>24});
+Object.defineProperty(screen,'pixelDepth',{get:()=>24});
+
+// --- navigator.connection (Network Information API) ---
+try{
+  const conn={effectiveType:['4g','4g','4g','3g'][Math.floor(Math.random()*4)],
+               downlink:Math.round((5+Math.random()*45)*10)/10,
+               rtt:[50,80,100,150][Math.floor(Math.random()*4)],
+               saveData:false,onchange:null,addEventListener:()=>{},removeEventListener:()=>{}};
+  Object.defineProperty(navigator,'connection',{get:()=>conn});
+  Object.defineProperty(navigator,'mozConnection',{get:()=>conn});
+}catch(e){}
+
+// --- Battery API ---
+if(navigator.getBattery){
+  const lvl=Math.round((0.3+Math.random()*0.6)*100)/100;
+  navigator.getBattery=()=>Promise.resolve({
+    charging:Math.random()>0.6,chargingTime:Infinity,
+    dischargingTime:Math.floor(Math.random()*7200)+1800,
+    level:lvl,addEventListener:()=>{},removeEventListener:()=>{}
+  });
+}
+
+// --- Performance timing noise ---
+const _now=performance.now.bind(performance);
+performance.now=()=>_now()+Math.random()*0.5;
+})();
 """
 
 # ===== Human simulation helpers =====
 async def _human_move(page, tx, ty):
-    """ØªØ­Ø±ÙŠÙƒ Ù…ÙˆØ³ ØªØ¯Ø±ÙŠØ¬ÙŠ Ø¨Ù…Ù†Ø­Ù†Ù‰ smoothstep + Ø§Ø±ØªØ¬Ø§Ø¬ Ø¹Ø´ÙˆØ§Ø¦ÙŠ"""
+    """تحريك موس تدريجي بمنحنى smoothstep + ارتجاج عشوائي"""
     sx = random.uniform(30, 360)
     sy = random.uniform(80, 600)
     steps = random.randint(7, 16)
@@ -155,7 +277,7 @@ async def _human_move(page, tx, ty):
         await asyncio.sleep(random.uniform(0.007, 0.032))
 
 async def _human_scroll(page, px):
-    """ØªÙ…Ø±ÙŠØ± ØªØ¯Ø±ÙŠØ¬ÙŠ â€” Ù„Ø£Ø¹Ù„Ù‰ Ø£Ùˆ Ø£Ø³ÙÙ„"""
+    """تمرير تدريجي — لأعلى أو أسفل"""
     steps  = max(2, abs(px) // 70)
     per    = px // steps
     for _ in range(steps):
@@ -163,7 +285,7 @@ async def _human_scroll(page, px):
         await asyncio.sleep(random.uniform(0.05, 0.18))
 
 async def _get_clickables(page):
-    """Ø£ÙˆÙ„ 50 Ø¹Ù†ØµØ± Ù‚Ø§Ø¨Ù„ Ù„Ù„Ø¶ØºØ· ÙˆØ¸Ø§Ù‡Ø± Ù…Ø¹ Ø¥Ø­Ø¯Ø§Ø«ÙŠØ§ØªÙ‡"""
+    """أول 50 عنصر قابل للضغط وظاهر مع إحداثياته"""
     sel = 'a[href], button, [role="button"], .btn, input[type="submit"], input[type="button"], label, li, [onclick]'
     els = await page.query_selector_all(sel)
     vis = []
@@ -178,14 +300,67 @@ async def _get_clickables(page):
             pass
     return vis
 
+AD_CLICK_RATE = 0.08   # 8% من الجلسات تضغط على إعلان واحد
+
+async def _try_click_ad(page):
+    """يبحث عن إعلان مرئي ويضغط عليه بشكل إنساني — يُستدعى مرة واحدة فقط"""
+    AD_SELECTORS = [
+        'iframe[src*="ad"]', 'iframe[src*="banner"]', 'iframe[src*="pop"]',
+        'ins.adsbygoogle', '[id*="ad-container"]', '[id*="banner"]',
+        '[class*="ad-wrap"]', '[class*="advertisement"]', '[class*="sponsored"]',
+        'a[href*="adsterra"]', 'a[href*="aff"]', 'iframe',
+    ]
+    tried = set()
+    for sel in AD_SELECTORS:
+        els = await page.query_selector_all(sel)
+        for el in els[:4]:
+            try:
+                if not await el.is_visible():
+                    continue
+                b = await el.bounding_box()
+                if not b or b['width'] < 40 or b['height'] < 20:
+                    continue
+                key = (round(b['x']), round(b['y']))
+                if key in tried:
+                    continue
+                tried.add(key)
+                await page.evaluate(f"window.scrollTo({{top: {max(0, b['y']-120)}, behavior:'smooth'}})")
+                await asyncio.sleep(random.uniform(0.8, 2.0))
+                x = b['x'] + b['width']  * random.uniform(0.25, 0.75)
+                y = b['y'] + b['height'] * random.uniform(0.25, 0.75)
+                await _human_move(page, x, y)
+                await asyncio.sleep(random.uniform(0.3, 0.9))
+                await page.mouse.down()
+                await asyncio.sleep(random.uniform(0.06, 0.16))
+                await page.mouse.up()
+                await asyncio.sleep(random.uniform(1.5, 4.0))
+                return True
+            except Exception:
+                pass
+    return False
+
 # ===== Browser session =====
-async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix=True):
+async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix=True, goto_timeout=90000):
     if jitter > 0:
         await asyncio.sleep(random.uniform(0, jitter))
+    duration = random.uniform(duration * 0.7, duration * 1.45)
 
-    dev       = random.choice(DEVICES)
-    locale    = random.choice(LOCALES)
-    final_url, ref = _build_url(url, traffic_mix)
+    dev = random.choice(DEVICES)
+
+    # detect proxy country for locale/timezone matching
+    proxy_country = 'default'
+    if proxy:
+        import re as _re
+        m = _re.search(r'__cr\.([a-z,]+)', proxy.lower())
+        if m:
+            countries = [c for c in m.group(1).split(',') if c in COUNTRY_PROFILES]
+            if countries:
+                proxy_country = random.choice(countries)
+    profile = COUNTRY_PROFILES[proxy_country]
+    locale  = random.choice(profile['locales'])
+    tz      = profile['tz']
+
+    final_url, ref = _build_url(url, traffic_mix, locale)
 
     launch = {
         'headless': True,
@@ -193,6 +368,7 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         'args': ['--no-sandbox','--disable-setuid-sandbox',
                  '--disable-blink-features=AutomationControlled',
                  '--disable-dev-shm-usage','--disable-gpu','--no-zygote',
+                 '--disable-webrtc',
                  f'--window-size={dev["vw"]},{dev["vh"]}'],
     }
     proxy_cfg = parse_proxy(proxy)
@@ -209,23 +385,38 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             _stats['devices'][dev['name']] = _stats['devices'].get(dev['name'], 0) + 1
 
         browser = await playwright.chromium.launch(**launch)
-        hdrs    = {'Accept-Language': f'{locale},{locale[:2]};q=0.9,en;q=0.7'}
+        hdrs = {
+            'Accept-Language': f'{locale},{locale[:2]};q=0.9,en;q=0.7',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Upgrade-Insecure-Requests': '1',
+        }
         if ref:
             hdrs['Referer'] = ref
+        if dev.get('engine') == 'chrome' and dev.get('ch_ua'):
+            hdrs['Sec-CH-UA'] = dev['ch_ua']
+            hdrs['Sec-CH-UA-Mobile'] = '?1'
+            hdrs['Sec-CH-UA-Platform'] = '"Android"' if 'Linux' in dev.get('platform','') else '"iOS"'
 
         context = await browser.new_context(
             user_agent=dev['ua'],
             viewport={'width':dev['vw'],'height':dev['vh']},
             device_scale_factor=dev['dpr'],
             is_mobile=True, has_touch=True,
-            locale=locale, timezone_id='Africa/Cairo',
+            locale=locale, timezone_id=tz,
             extra_http_headers=hdrs,
         )
-        await context.add_init_script(STEALTH_JS)
+        stealth = (STEALTH_JS
+                   .replace('__LOCALE__', locale)
+                   .replace('__LOCALE2__', locale[:2])
+                   .replace('__PLATFORM__', dev.get('platform', 'Linux aarch64'))
+                   .replace('__VENDOR__', dev.get('vendor', 'Google Inc.'))
+                   .replace('__ENGINE__', dev.get('engine', 'chrome')))
+        await context.add_init_script(stealth)
         page = await context.new_page()
 
         t_nav = time.time()
-        resp  = await page.goto(final_url, wait_until='domcontentloaded', timeout=25000)
+        resp  = await page.goto(final_url, wait_until='domcontentloaded', timeout=goto_timeout)
         nav_ms = int((time.time() - t_nav) * 1000)
 
         if resp:
@@ -236,11 +427,11 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
                 if len(_stats['times']) > 500:
                     _stats['times'].pop(0)
 
-        # === ÙˆÙ‚Øª Ø§Ù„Ø§Ø³ØªÙŠØ¹Ø§Ø¨ Ø§Ù„Ø£ÙˆÙ„ÙŠ â€” Ø¥Ù†Ø³Ø§Ù† ÙŠØ´ÙˆÙ Ø§Ù„ØµÙØ­Ø© Ø£ÙˆÙ„ Ù…Ø§ ØªÙØªØ­ ===
+        # === وقت الاستيعاب الأولي — إنسان يشوف الصفحة أول ما تفتح ===
         await asyncio.sleep(random.uniform(0.8, 2.2))
 
-        # === Ø­Ù„Ù‚Ø© Ø§Ù„Ø£ÙØ¹Ø§Ù„ Ø§Ù„Ø¨Ø´Ø±ÙŠØ© ===
-        # Ø§Ù„Ø£ÙˆØ²Ø§Ù†: ØªÙ…Ø±ÙŠØ± Ù„Ø£Ø³ÙÙ„ Ø£ÙƒØ«Ø± Ø´ÙŠØ¡ØŒ Ø«Ù… Ø¶ØºØ·ØŒ Ø«Ù… Ø­Ø±ÙƒØ© Ù…ÙˆØ³ØŒ Ø«Ù… ØªÙˆÙ‚Ù Ù‚Ø±Ø§Ø¡Ø©ØŒ Ø«Ù… hoverØŒ Ø«Ù… ØªÙ…Ø±ÙŠØ± Ù„Ø£Ø¹Ù„Ù‰
+        # === حلقة الأفعال البشرية ===
+        # الأوزان: تمرير لأسفل أكثر شيء، ثم ضغط، ثم حركة موس، ثم توقف قراءة، ثم hover، ثم تمرير لأعلى
         ACTIONS = (
             ['scroll_dn'] * 4 +
             ['click']     * 3 +
@@ -250,75 +441,96 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             ['scroll_up'] * 1
         )
 
-        vw = await page.evaluate('window.innerWidth')
-        vh = await page.evaluate('window.innerHeight')
+        try:
+            vw = await page.evaluate('window.innerWidth')
+            vh = await page.evaluate('window.innerHeight')
+        except Exception:
+            vw, vh = dev['vw'], dev['vh']
+
+        # ضغط عشوائي على إعلان في جزء صغير من الجلسات
+        do_ad_click = random.random() < AD_CLICK_RATE
+        ad_clicked  = False
 
         while (time.time() - t_start) < duration and not _state['stop']:
-            action = random.choice(ACTIONS)
+            try:
+                # ضغط على إعلان مرة واحدة بعد 8 ثوانٍ من التصفح
+                if do_ad_click and not ad_clicked and (time.time() - t_start) > 8:
+                    ad_clicked = await _try_click_ad(page)
+                    if ad_clicked:
+                        add_log(f'  → ad♦ {sid:04d}')
+                        await asyncio.sleep(random.uniform(2.0, 5.0))
+                        break  # الصفحة ربما تنقّلت — أنهِ الجلسة بأمان
+                    else:
+                        do_ad_click = False  # لم يجد إعلاناً، لا تحاول مجدداً
 
-            # â€” ØªÙ…Ø±ÙŠØ± Ù„Ø£Ø³ÙÙ„ â€”
-            if action == 'scroll_dn':
-                await _human_scroll(page, random.randint(100, 420))
-                await asyncio.sleep(random.uniform(0.4, 2.0))
+                action = random.choice(ACTIONS)
 
-            # â€” ØªÙ…Ø±ÙŠØ± Ù„Ø£Ø¹Ù„Ù‰ â€”
-            elif action == 'scroll_up':
-                await _human_scroll(page, -random.randint(50, 220))
-                await asyncio.sleep(random.uniform(0.3, 1.2))
+                # — تمرير لأسفل —
+                if action == 'scroll_dn':
+                    await _human_scroll(page, random.randint(100, 420))
+                    await asyncio.sleep(random.uniform(0.4, 2.0))
 
-            # â€” Ø¶ØºØ·Ø© Ø¹Ù„Ù‰ Ø¹Ù†ØµØ± Ù…Ø±Ø¦ÙŠ â€”
-            elif action == 'click':
-                try:
-                    vis = await _get_clickables(page)
-                    if vis:
-                        el, b = random.choice(vis[:20])
-                        x = b['x'] + b['width']  / 2 + random.uniform(-5, 5)
-                        y = b['y'] + b['height'] / 2 + random.uniform(-4, 4)
-                        await _human_move(page, x, y)
-                        await asyncio.sleep(random.uniform(0.12, 0.45))
-                        await page.mouse.down()
-                        await asyncio.sleep(random.uniform(0.05, 0.18))   # Ù…Ø¯Ø© Ø§Ù„Ø¶ØºØ·
-                        await page.mouse.up()
-                        await asyncio.sleep(random.uniform(0.6, 2.5))
-                except Exception:
-                    pass
+                # — تمرير لأعلى —
+                elif action == 'scroll_up':
+                    await _human_scroll(page, -random.randint(50, 220))
+                    await asyncio.sleep(random.uniform(0.3, 1.2))
 
-            # â€” Ø­Ø±ÙƒØ© Ù…ÙˆØ³ Ø¹Ø´ÙˆØ§Ø¦ÙŠØ© (ØªØµÙØ­ Ø¨Ø¯ÙˆÙ† Ø¶ØºØ·) â€”
-            elif action == 'move':
-                pts = random.randint(1, 3)
-                for _ in range(pts):
-                    await _human_move(page,
-                                      random.uniform(10, vw - 10),
-                                      random.uniform(10, vh - 10))
-                    await asyncio.sleep(random.uniform(0.15, 0.6))
+                # — ضغطة على عنصر مرئي —
+                elif action == 'click':
+                    try:
+                        vis = await _get_clickables(page)
+                        if vis:
+                            el, b = random.choice(vis[:20])
+                            x = b['x'] + b['width']  / 2 + random.uniform(-5, 5)
+                            y = b['y'] + b['height'] / 2 + random.uniform(-4, 4)
+                            await _human_move(page, x, y)
+                            await asyncio.sleep(random.uniform(0.12, 0.45))
+                            await page.mouse.down()
+                            await asyncio.sleep(random.uniform(0.05, 0.18))
+                            await page.mouse.up()
+                            await asyncio.sleep(random.uniform(0.6, 2.5))
+                    except Exception:
+                        pass
 
-            # â€” ØªÙˆÙ‚Ù Ù‚Ø±Ø§Ø¡Ø© â€”
-            elif action == 'pause':
-                await asyncio.sleep(random.uniform(1.2, 4.0))
-
-            # â€” hover Ø¹Ù„Ù‰ Ø¹Ù†ØµØ± â€”
-            elif action == 'hover':
-                try:
-                    vis = await _get_clickables(page)
-                    if vis:
-                        el, b = random.choice(vis[:15])
+                # — حركة موس عشوائية (تصفح بدون ضغط) —
+                elif action == 'move':
+                    pts = random.randint(1, 3)
+                    for _ in range(pts):
                         await _human_move(page,
-                                          b['x'] + b['width']  / 2,
-                                          b['y'] + b['height'] / 2)
-                        await asyncio.sleep(random.uniform(0.4, 1.6))
-                except Exception:
-                    pass
+                                          random.uniform(10, vw - 10),
+                                          random.uniform(10, vh - 10))
+                        await asyncio.sleep(random.uniform(0.15, 0.6))
+
+                # — توقف قراءة —
+                elif action == 'pause':
+                    await asyncio.sleep(random.uniform(1.2, 4.0))
+
+                # — hover على عنصر —
+                elif action == 'hover':
+                    try:
+                        vis = await _get_clickables(page)
+                        if vis:
+                            el, b = random.choice(vis[:15])
+                            await _human_move(page,
+                                              b['x'] + b['width']  / 2,
+                                              b['y'] + b['height'] / 2)
+                            await asyncio.sleep(random.uniform(0.4, 1.6))
+                    except Exception:
+                        pass
+
+            except Exception:
+                break  # context destroyed (navigation) — أنهِ الجلسة
 
         total_s = int(time.time() - t_start)
         with _lock:
             _stats['ok'] += 1
         sc = f'[{resp.status}]' if resp else ''
-        add_log(f'âœ“ {sid:04d} {sc} {dev["name"]}  {nav_ms}ms  {total_s}s  {locale}')
+        add_log(f'✓ {sid:04d} {sc} {dev["name"]}  {nav_ms}ms  {total_s}s  {locale}')
 
     except Exception as e:
         with _lock:
             _stats['err'] += 1
-        add_log(f'âœ— {sid:04d} {type(e).__name__}: {str(e)[:80]}')
+        add_log(f'✗ {sid:04d} {type(e).__name__}: {str(e)[:80]}')
     finally:
         with _lock:
             _stats['active'] -= 1
@@ -327,7 +539,7 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             except: pass
 
 # ===== Master runner =====
-async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, traffic_mix=True):
+async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, traffic_mix=True, goto_timeout=90000):
     _state['stop'] = False
     reset_stats(count)
 
@@ -346,16 +558,16 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
             async with sem:
                 if _state['stop']:
                     return
-                await run_session(pw, url, proxy or None, duration, i, jitter, traffic_mix)
+                await run_session(pw, url, proxy or None, duration, i, jitter, traffic_mix, goto_timeout)
 
         await asyncio.gather(*[bounded(i) for i in range(1, count+1)])
 
     _state['running'] = False
 
-def _thread(url, proxy, count, concurrency, duration, jitter, err_thresh, traffic_mix=True):
+def _thread(url, proxy, count, concurrency, duration, jitter, err_thresh, traffic_mix=True, goto_timeout=90000):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(_master(url, proxy, count, concurrency, duration, jitter, err_thresh, traffic_mix))
+    loop.run_until_complete(_master(url, proxy, count, concurrency, duration, jitter, err_thresh, traffic_mix, goto_timeout))
     loop.close()
 
 # Background RPS history tracker
@@ -396,7 +608,7 @@ def test_proxy():
     if not cfg:
         return jsonify({'ok':True,'mode':'direct','ip':base.get('ip'),
                         'country':base.get('country'),'org':base.get('org',''),'ms':0,
-                        'msg':'Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ø¨Ø±ÙˆÙƒØ³ÙŠ â€” IP Ø§Ù„Ø³ÙŠØ±ÙØ± Ø§Ù„Ù…Ø¨Ø§Ø´Ø±'})
+                        'msg':'لا يوجد بروكسي — IP السيرفر المباشر'})
 
     server   = cfg['server']
     username = cfg.get('username','')
@@ -414,9 +626,9 @@ def test_proxy():
         same_ip = data.get('ip') == base.get('ip')
         return jsonify({'ok':True,'mode':'proxy','ip':data.get('ip'),'country':data.get('country'),
                         'org':data.get('org',''),'city':data.get('city',''),'ms':ms,'same_ip':same_ip,
-                        'msg':'âš ï¸ Ù†ÙØ³ IP Ø§Ù„Ø³ÙŠØ±ÙØ±! Ø§Ù„Ø¨Ø±ÙˆÙƒØ³ÙŠ Ù„Ø§ ÙŠØ¹Ù…Ù„' if same_ip else 'âœ“ Ø§Ù„Ø¨Ø±ÙˆÙƒØ³ÙŠ ÙŠØ¹Ù…Ù„'})
+                        'msg':'⚠️ نفس IP السيرفر! البروكسي لا يعمل' if same_ip else '✓ البروكسي يعمل'})
     except Exception as e:
-        return jsonify({'ok':False,'msg':f'ÙØ´Ù„: {type(e).__name__}: {str(e)[:120]}',
+        return jsonify({'ok':False,'msg':f'فشل: {type(e).__name__}: {str(e)[:120]}',
                         'ms':round((time.time()-t0)*1000)})
 
 @app.route('/start', methods=['POST'])
@@ -438,13 +650,14 @@ def start():
         float(d.get('jitter',0)),
         float(d.get('err_thresh',0)),
         bool(d.get('traffic_mix', True)),
+        int(d.get('goto_timeout', 90000)),
     )).start()
     return jsonify({'ok':True})
 
 @app.route('/stop', methods=['POST'])
 def stop():
     _state['stop']    = True
-    _state['running'] = False   # ÙÙˆØ±ÙŠ â€” ÙŠØ®Ù„Ù‘ÙŠ Ø§Ù„Ù€ UI ÙŠØ³ØªØ¬ÙŠØ¨ ÙÙˆØ±Ø§Ù‹
+    _state['running'] = False   # فوري — يخلّي الـ UI يستجيب فوراً
     return jsonify({'ok':True})
 
 @app.route('/export')
@@ -595,53 +808,53 @@ svg.sparkline{width:100%;height:50px;display:block;overflow:visible}
 
 <!-- Settings -->
 <div class="card">
-  <div class="ct">âš™ï¸ Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ø§Ø®ØªØ¨Ø§Ø±</div>
+  <div class="ct">⚙️ إعدادات الاختبار</div>
 
-  <label>Ø±Ø§Ø¨Ø· Ø§Ù„Ù…ÙˆÙ‚Ø¹ *</label>
+  <label>رابط الموقع *</label>
   <input id="url" type="url" placeholder="https://example.com" oninput="saveCfg()">
 
-  <label>Ø§Ù„Ø¨Ø±ÙˆÙƒØ³ÙŠ (Ø§Ø®ØªÙŠØ§Ø±ÙŠ)</label>
+  <label>البروكسي (اختياري)</label>
   <div style="display:flex;gap:7px;align-items:center">
-    <input id="proxy" type="text" placeholder="user:pass@host:port  Ø£Ùˆ  http://..." style="flex:1" oninput="saveCfg()">
-    <button class="btn-sm" id="btnTest" onclick="testProxy()">ðŸ” Ø§Ø®ØªØ¨Ø§Ø±</button>
+    <input id="proxy" type="text" placeholder="user:pass@host:port  أو  http://..." style="flex:1" oninput="saveCfg()">
+    <button class="btn-sm" id="btnTest" onclick="testProxy()">🔍 اختبار</button>
   </div>
   <div id="proxyResult" style="display:none"></div>
 
   <div class="g4">
-    <div><label>Ø¹Ø¯Ø¯ Ø§Ù„Ø²ÙŠØ§Ø±Ø§Øª</label><input id="count" type="number" value="30" min="1" max="5000" oninput="saveCfg()"></div>
-    <div><label>ØªØ²Ø§Ù…Ù†</label><input id="conc" type="number" value="3" min="1" max="15" oninput="saveCfg()"></div>
-    <div><label>Ù…Ø¯Ø© Ø§Ù„Ø¬Ù„Ø³Ø© (Ø«)</label><input id="dur" type="number" value="20" min="5" max="60" oninput="saveCfg()"></div>
-    <div><label>Ø¬ÙŠØªØ± (Ø«) â“˜</label><input id="jitter" type="number" value="0" min="0" max="30" step="0.5" title="ØªØ£Ø®ÙŠØ± Ø¹Ø´ÙˆØ§Ø¦ÙŠ Ø¨ÙŠÙ† Ø¨Ø¯Ø¡ Ø§Ù„Ø¬Ù„Ø³Ø§Øª" oninput="saveCfg()"></div>
+    <div><label>عدد الزيارات</label><input id="count" type="number" value="30" min="1" max="5000" oninput="saveCfg()"></div>
+    <div><label>تزامن</label><input id="conc" type="number" value="3" min="1" max="15" oninput="saveCfg()"></div>
+    <div><label>مدة الجلسة (ث)</label><input id="dur" type="number" value="20" min="5" max="60" oninput="saveCfg()"></div>
+    <div><label>جيتر (ث) ⓘ</label><input id="jitter" type="number" value="0" min="0" max="30" step="0.5" title="تأخير عشوائي بين بدء الجلسات" oninput="saveCfg()"></div>
   </div>
 
   <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-    <label style="margin:0;white-space:nowrap">Ø¥ÙŠÙ‚Ø§Ù ØªÙ„Ù‚Ø§Ø¦ÙŠ Ø¥Ø°Ø§ ÙˆØµÙ„Øª Ø§Ù„Ø£Ø®Ø·Ø§Ø¡</label>
-    <input id="errThresh" type="number" value="0" min="0" max="100" style="width:70px" title="0 = Ù…Ø¹Ø·Ù‘Ù„" oninput="saveCfg()">
-    <span style="font-size:12px;color:var(--muted)">% (0 = Ù…Ø¹Ø·Ù‘Ù„)</span>
+    <label style="margin:0;white-space:nowrap">إيقاف تلقائي إذا وصلت الأخطاء</label>
+    <input id="errThresh" type="number" value="0" min="0" max="100" style="width:70px" title="0 = معطّل" oninput="saveCfg()">
+    <span style="font-size:12px;color:var(--muted)">% (0 = معطّل)</span>
   </div>
 
   <div class="g2" style="margin-top:12px">
-    <button class="btn btn-go"   id="btnGo"   onclick="doStart()">â–¶ Ø§Ø¨Ø¯Ø£ Ø§Ù„Ø§Ø®ØªØ¨Ø§Ø±</button>
-    <button class="btn btn-stop" id="btnStop" onclick="doStop()" disabled>â¹ Ø¥ÙŠÙ‚Ø§Ù</button>
+    <button class="btn btn-go"   id="btnGo"   onclick="doStart()">▶ ابدأ الاختبار</button>
+    <button class="btn btn-stop" id="btnStop" onclick="doStop()" disabled>⏹ إيقاف</button>
   </div>
 </div>
 
 <!-- Stats -->
 <div class="card">
   <div class="hdr">
-    <span class="ct" style="margin:0">ðŸ“Š Ø¥Ø­ØµØ§Ø¦ÙŠØ§Øª Ù…Ø¨Ø§Ø´Ø±Ø©</span>
+    <span class="ct" style="margin:0">📊 إحصائيات مباشرة</span>
     <div style="display:flex;align-items:center;gap:8px">
       <span id="okRate" class="rate-pill rate-hi" style="display:none"></span>
-      <span class="badge b-idle" id="badge">â¹ Ù…ØªÙˆÙ‚Ù</span>
+      <span class="badge b-idle" id="badge">⏹ متوقف</span>
     </div>
   </div>
 
   <div class="stats5">
-    <div class="stat"><div class="num c-ok"  id="sOk">0</div><div class="lbl">âœ“ Ù†Ø¬Ø§Ø­</div></div>
-    <div class="stat"><div class="num c-err" id="sErr">0</div><div class="lbl">âœ— Ø£Ø®Ø·Ø§Ø¡</div></div>
-    <div class="stat"><div class="num c-act" id="sAct">0</div><div class="lbl">ðŸ”µ Ù†Ø´Ø·</div></div>
-    <div class="stat"><div class="num c-spd" id="sRps">0.0</div><div class="lbl">âš¡ Ø¬Ù„Ø³Ø©/Ø«</div></div>
-    <div class="stat"><div class="num c-ms"  id="sMs">â€”</div><div class="lbl">â± avg ms</div></div>
+    <div class="stat"><div class="num c-ok"  id="sOk">0</div><div class="lbl">✓ نجاح</div></div>
+    <div class="stat"><div class="num c-err" id="sErr">0</div><div class="lbl">✗ أخطاء</div></div>
+    <div class="stat"><div class="num c-act" id="sAct">0</div><div class="lbl">🔵 نشط</div></div>
+    <div class="stat"><div class="num c-spd" id="sRps">0.0</div><div class="lbl">⚡ جلسة/ث</div></div>
+    <div class="stat"><div class="num c-ms"  id="sMs">—</div><div class="lbl">⏱ avg ms</div></div>
   </div>
 
   <div class="prog-wrap">
@@ -656,7 +869,7 @@ svg.sparkline{width:100%;height:50px;display:block;overflow:visible}
   <!-- Sparkline -->
   <div class="spark-wrap">
     <div class="spark-label">
-      <span>Ø¬Ù„Ø³Ø©/Ø«Ø§Ù†ÙŠØ© â€” Ø¢Ø®Ø± 60s</span>
+      <span>جلسة/ثانية — آخر 60s</span>
       <span id="sparkMax" style="color:var(--spd)"></span>
     </div>
     <svg class="sparkline" id="sparkSvg" preserveAspectRatio="none"></svg>
@@ -665,37 +878,37 @@ svg.sparkline{width:100%;height:50px;display:block;overflow:visible}
 
 <!-- Status codes -->
 <div class="card">
-  <div class="ct">ðŸ”¢ ØªÙˆØ²ÙŠØ¹ Ø§Ù„Ø§Ø³ØªØ¬Ø§Ø¨Ø§Øª</div>
-  <div class="codes-bar" id="codesBar"><span style="color:var(--muted);font-size:11px;padding:3px 8px">Ù„Ø§ Ø¨ÙŠØ§Ù†Ø§Øª Ø¨Ø¹Ø¯</span></div>
+  <div class="ct">🔢 توزيع الاستجابات</div>
+  <div class="codes-bar" id="codesBar"><span style="color:var(--muted);font-size:11px;padding:3px 8px">لا بيانات بعد</span></div>
   <div class="codes-legend">
-    <div class="leg-item"><div class="leg-dot" style="background:#3fb950"></div>2xx Ù†Ø¬Ø§Ø­</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#58a6ff"></div>3xx ØªØ­ÙˆÙŠÙ„</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#e3b341"></div>4xx Ø®Ø·Ø£ Ø¹Ù…ÙŠÙ„</div>
-    <div class="leg-item"><div class="leg-dot" style="background:#f85149"></div>5xx Ø®Ø·Ø£ Ø³ÙŠØ±ÙØ±</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#3fb950"></div>2xx نجاح</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#58a6ff"></div>3xx تحويل</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#e3b341"></div>4xx خطأ عميل</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#f85149"></div>5xx خطأ سيرفر</div>
   </div>
   <div id="codesDetail" style="margin-top:8px;font-size:11px;color:var(--muted);direction:ltr"></div>
 </div>
 
 <!-- Devices -->
 <div class="card">
-  <div class="ct">ðŸ“± Ø§Ù„Ø£Ø¬Ù‡Ø²Ø© Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…Ø©</div>
+  <div class="ct">📱 الأجهزة المستخدمة</div>
   <div class="dev-chips" id="devChips"></div>
 </div>
 
 <!-- Log -->
 <div class="card">
   <div class="log-hdr">
-    <span class="ct" style="margin:0">ðŸ“‹ Ø³Ø¬Ù„ Ø§Ù„Ø¹Ù…Ù„ÙŠØ§Øª</span>
+    <span class="ct" style="margin:0">📋 سجل العمليات</span>
     <div style="display:flex;gap:5px;align-items:center">
       <div class="log-filters">
-        <button class="log-btn active" id="fAll"  onclick="setFilter('all')">Ø§Ù„ÙƒÙ„</button>
-        <button class="log-btn"        id="fOk"   onclick="setFilter('ok')">âœ“</button>
-        <button class="log-btn"        id="fErr"  onclick="setFilter('err')">âœ—</button>
+        <button class="log-btn active" id="fAll"  onclick="setFilter('all')">الكل</button>
+        <button class="log-btn"        id="fOk"   onclick="setFilter('ok')">✓</button>
+        <button class="log-btn"        id="fErr"  onclick="setFilter('err')">✗</button>
       </div>
-      <a href="/export" class="btn-sm" style="text-decoration:none;display:inline-flex;align-items:center;padding:2px 9px;height:25px">â¬‡ ØªØµØ¯ÙŠØ±</a>
+      <a href="/export" class="btn-sm" style="text-decoration:none;display:inline-flex;align-items:center;padding:2px 9px;height:25px">⬇ تصدير</a>
     </div>
   </div>
-  <div class="log-box" id="logBox"><span style="color:#484f58">Ø¬Ø§Ù‡Ø² Ù„Ù„Ø¨Ø¯Ø¡...</span></div>
+  <div class="log-box" id="logBox"><span style="color:#484f58">جاهز للبدء...</span></div>
 </div>
 
 <script>
@@ -737,34 +950,34 @@ function toast(msg,type='info'){
 function testProxy(){
   const prx=$('proxy').value.trim();
   const btn=$('btnTest'), box=$('proxyResult');
-  btn.disabled=true; btn.textContent='â³';
+  btn.disabled=true; btn.textContent='⏳';
   box.style.display='none';
   fetch('/test_proxy',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({proxy:prx})})
   .then(r=>r.json()).then(d=>{
-    btn.disabled=false; btn.textContent='ðŸ” Ø§Ø®ØªØ¨Ø§Ø±';
+    btn.disabled=false; btn.textContent='🔍 اختبار';
     box.style.display='block';
     if(!d.ok){box.className='px-err';box.textContent=d.msg;return;}
     if(d.mode==='direct'){
       box.className='px-warn';
-      box.textContent=`âš  Ø¨Ø¯ÙˆÙ† Ø¨Ø±ÙˆÙƒØ³ÙŠ â€” IP: ${d.ip}  ${d.country}  ${d.org}`;
+      box.textContent=`⚠ بدون بروكسي — IP: ${d.ip}  ${d.country}  ${d.org}`;
     } else if(d.same_ip){
       box.className='px-warn';
-      box.textContent=`âš  Ù†ÙØ³ IP Ø§Ù„Ø³ÙŠØ±ÙØ±!  IP: ${d.ip}  ${d.ms}ms`;
+      box.textContent=`⚠ نفس IP السيرفر!  IP: ${d.ip}  ${d.ms}ms`;
     } else {
       box.className='px-ok';
-      box.textContent=`âœ“ ÙŠØ¹Ù…Ù„  IP: ${d.ip}  ${d.country} ${d.city}  ${d.org}  ${d.ms}ms`;
+      box.textContent=`✓ يعمل  IP: ${d.ip}  ${d.country} ${d.city}  ${d.org}  ${d.ms}ms`;
     }
   }).catch(e=>{
-    btn.disabled=false; btn.textContent='ðŸ” Ø§Ø®ØªØ¨Ø§Ø±';
-    box.className='px-err'; box.style.display='block'; box.textContent='Ø®Ø·Ø£: '+e;
+    btn.disabled=false; btn.textContent='🔍 اختبار';
+    box.className='px-err'; box.style.display='block'; box.textContent='خطأ: '+e;
   });
 }
 
 // ===== start / stop =====
 function doStart(){
   const url=$('url').value.trim();
-  if(!url){toast('Ø£Ø¯Ø®Ù„ Ø±Ø§Ø¨Ø· Ø§Ù„Ù…ÙˆÙ‚Ø¹','err');return;}
+  if(!url){toast('أدخل رابط الموقع','err');return;}
   saveCfg();
   fetch('/start',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -780,13 +993,13 @@ function doStart(){
     $('btnGo').disabled=true; $('btnStop').disabled=false;
     $('logBox').innerHTML='';
     subscribe();
-    toast('Ø¨Ø¯Ø£ Ø§Ù„Ø§Ø®ØªØ¨Ø§Ø±','info');
+    toast('بدأ الاختبار','info');
   });
 }
 function doStop(){
   fetch('/stop',{method:'POST'});
   $('btnStop').disabled=true;
-  toast('Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø¥ÙŠÙ‚Ø§Ù...','info');
+  toast('جاري الإيقاف...','info');
 }
 
 // ===== log filter =====
@@ -798,8 +1011,8 @@ function setFilter(f){
 }
 function renderLog(log){
   _lastLog=log;
-  const filtered=log.filter(l=>_logFilter==='all'||(l.startsWith('âœ“')&&_logFilter==='ok')||(l.startsWith('âœ—')&&_logFilter==='err'));
-  $('logBox').innerHTML=[...filtered].reverse().map(l=>`<div class="${l.startsWith('âœ“')?'log-ok':'log-err'}">${l}</div>`).join('') || '<span style="color:#484f58">Ù„Ø§ ØªÙˆØ¬Ø¯ Ù†ØªØ§Ø¦Ø¬</span>';
+  const filtered=log.filter(l=>_logFilter==='all'||(l.startsWith('✓')&&_logFilter==='ok')||(l.startsWith('✗')&&_logFilter==='err'));
+  $('logBox').innerHTML=[...filtered].reverse().map(l=>`<div class="${l.startsWith('✓')?'log-ok':'log-err'}">${l}</div>`).join('') || '<span style="color:#484f58">لا توجد نتائج</span>';
 }
 
 // ===== sparkline =====
@@ -842,7 +1055,7 @@ function updateCodes(codes){
     const pct=(v/total*100).toFixed(1);
     return `<div class="code-seg" style="width:${pct}%;background:${CODE_COLORS[k]}" title="${k}: ${v} (${pct}%)">${parseFloat(pct)>8?k:'&nbsp;'}</div>`;
   }).join('');
-  bar.innerHTML=segs||'<span style="color:var(--muted);font-size:11px;padding:3px 8px">Ù„Ø§ Ø¨ÙŠØ§Ù†Ø§Øª</span>';
+  bar.innerHTML=segs||'<span style="color:var(--muted);font-size:11px;padding:3px 8px">لا بيانات</span>';
   $('codesDetail').textContent=Object.entries(codes).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join('  ');
 }
 
@@ -850,7 +1063,7 @@ function updateCodes(codes){
 function updateDevices(devs){
   const box=$('devChips');
   if(!Object.keys(devs).length){
-    box.innerHTML='<span style="color:var(--muted);font-size:12px">Ù„Ø§ Ø¨ÙŠØ§Ù†Ø§Øª Ø¨Ø¹Ø¯</span>';
+    box.innerHTML='<span style="color:var(--muted);font-size:12px">لا بيانات بعد</span>';
     return;
   }
   box.innerHTML=Object.entries(devs).sort((a,b)=>b[1]-a[1]).map(([name,cnt])=>
@@ -870,7 +1083,7 @@ function subscribe(){
     $('sErr').textContent=d.err;
     $('sAct').textContent=d.active;
     $('sRps').textContent=d.rps.toFixed(1);
-    $('sMs').textContent=d.avg_ms?d.avg_ms+'ms':'â€”';
+    $('sMs').textContent=d.avg_ms?d.avg_ms+'ms':'—';
 
     const done=d.ok+d.err;
     const pct=d.total?Math.round(done/d.total*100):0;
@@ -889,16 +1102,16 @@ function subscribe(){
 
     const badge=$('badge');
     if(d.running){
-      badge.className='badge b-run'; badge.textContent='ðŸŸ¢ ÙŠØ¹Ù…Ù„';
+      badge.className='badge b-run'; badge.textContent='🟢 يعمل';
     } else if(done>0 && done===d.total){
-      badge.className='badge b-done'; badge.textContent='âœ“ Ø§ÙƒØªÙ…Ù„';
+      badge.className='badge b-done'; badge.textContent='✓ اكتمل';
     } else {
-      badge.className='badge b-idle'; badge.textContent='â¹ Ù…ØªÙˆÙ‚Ù';
+      badge.className='badge b-idle'; badge.textContent='⏹ متوقف';
     }
 
     if(!d.running && prevRunning){
       $('btnGo').disabled=false; $('btnStop').disabled=true;
-      toast(`Ø§Ù†ØªÙ‡Ù‰! âœ“${d.ok} âœ—${d.err}`, d.err===0?'ok':'info');
+      toast(`انتهى! ✓${d.ok} ✗${d.err}`, d.err===0?'ok':'info');
     }
     prevRunning=d.running;
 
@@ -920,5 +1133,5 @@ subscribe();
 if __name__ == '__main__':
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5555
-    print(f"KW Mobile Tester v2 â†’ http://0.0.0.0:{port}")
+    print(f"KW Mobile Tester v2 → http://0.0.0.0:{port}")
     app.run(host='0.0.0.0', port=port, threaded=True)
