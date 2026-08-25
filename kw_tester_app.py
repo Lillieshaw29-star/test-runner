@@ -40,6 +40,45 @@ _stats = {
 }
 _lock = threading.Lock()
 
+# === زوّار عائدون (#2) ===
+# بعد كل جلسة ناجحة نلتقط storage_state (الكوكيز اللي الموقع نفسه حطها زي _ga/_fbp)،
+# وجزء من الجلسات الجديدة يبدأ من واحدة محفوظة = الموقع يشوفه "returning visitor".
+RETURNING_RATE = 0.28          # نسبة الجلسات اللي تبان زائر عائد
+_ctx_states     = []           # بول snapshots للكوكيز (bounded)
+_CTX_STATES_MAX = 200
+def _save_ctx_state(st):
+    if not st:
+        return
+    with _lock:
+        _ctx_states.append(st)
+        if len(_ctx_states) > _CTX_STATES_MAX:
+            _ctx_states.pop(0)
+def _pick_ctx_state():
+    with _lock:
+        return random.choice(_ctx_states) if _ctx_states else None
+
+# === شخصيات الجلسات (#4) ===
+# توزيع طبيعي: زائر يخرج بسرعة، ماسح عادي، قارئ متعمّق.
+PERSONAS = (
+    [('bouncer', 0.30, 0.55)] * 20 +   # مدة قصيرة، يخرج بسرعة (bounce)
+    [('scanner', 0.85, 1.15)] * 50 +   # تصفّح عادي
+    [('reader',  1.25, 1.70)] * 30     # قراءة متعمّقة، وقت أطول
+)
+
+# === تشكيل حسب ساعة اليوم (#3) ===
+# منحنى شبيه بترافيك فيسبوك: ذروة مساءً، هدوء الفجر (0.0..1.0 لكل ساعة محلية).
+_HOUR_WEIGHTS = [
+    0.20, 0.15, 0.12, 0.10, 0.12, 0.18,   # 0-5  فجر
+    0.30, 0.45, 0.60, 0.70, 0.72, 0.75,   # 6-11 صباح
+    0.80, 0.78, 0.72, 0.70, 0.75, 0.85,   # 12-17 ظهر/عصر
+    0.95, 1.00, 0.98, 0.85, 0.60, 0.35,   # 18-23 ذروة المساء
+]
+def _hour_weight():
+    try:
+        return _HOUR_WEIGHTS[time.localtime().tm_hour]
+    except Exception:
+        return 0.8
+
 # دومينات تعني إن الـ Smartlink ميت/موقوف (صفحة Adsterra الاحتياطية) —
 # الهبوط عليها = زيارة مش هتتحسب، فنوقف بدل ما نحرق بروكسي على الفاضي
 DEAD_HOSTS = ('adzilla.meme', 'sedoparking.com', 'parkingcrew.net', 'bodis.com',
@@ -413,7 +452,13 @@ async def _try_click_ad(page):
 async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix=True, goto_timeout=90000, pick_proxy=None):
     if jitter > 0:
         await asyncio.sleep(random.uniform(0, jitter))
-    duration = random.uniform(duration * 0.7, duration * 1.45)
+
+    # شخصية الجلسة (#4): تحدّد مدة التصفّح وميل الأفعال
+    persona, pmin, pmax = random.choice(PERSONAS)
+    duration = random.uniform(duration * pmin, duration * pmax)
+
+    # زائر عائد؟ (#2) — يبدأ من كوكيز محفوظة عشان يبان returning للموقع
+    reuse_state = _pick_ctx_state() if random.random() < RETURNING_RATE else None
 
     dev = random.choice(DEVICES)
 
@@ -490,7 +535,7 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
 
     async def _open(pstr):
         b   = await playwright.chromium.launch(**_launch_opts(pstr))
-        ctx = await b.new_context(
+        ctx_opts = dict(
             user_agent=ua,
             viewport={'width':dev['vw'],'height':dev['vh']},
             device_scale_factor=dev['dpr'],
@@ -498,11 +543,16 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             locale=locale, timezone_id=tz,
             extra_http_headers=hdrs,
         )
+        if reuse_state:                       # زائر عائد: نبدأ من كوكيز الموقع المحفوظة
+            ctx_opts['storage_state'] = reuse_state
+        ctx = await b.new_context(**ctx_opts)
         await ctx.add_init_script(stealth)
         pg = await ctx.new_page()
         t_nav = time.time()
-        r = await pg.goto(final_url, wait_until='domcontentloaded', timeout=goto_timeout)
-        return b, pg, r, int((time.time() - t_nav) * 1000)
+        # referer جوه goto بيملّي document.referrer (مش الهيدر بس) — التحليلات تنسب الزيارة لفيسبوك (#1)
+        r = await pg.goto(final_url, wait_until='domcontentloaded',
+                          timeout=goto_timeout, referer=(ref or None))
+        return b, ctx, pg, r, int((time.time() - t_nav) * 1000)
 
     try:
         with _lock:
@@ -514,11 +564,11 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         attempts = [proxy]
         if pick_proxy:
             attempts += [pick_proxy() for _ in range(PROXY_RETRIES)]
-        page = resp = None
+        page = resp = context = None
         last_err = None
         for pstr in attempts:
             try:
-                browser, page, resp, nav_ms = await _open(pstr)
+                browser, context, page, resp, nav_ms = await _open(pstr)
                 break
             except Exception as e:
                 last_err = e
@@ -555,14 +605,15 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
 
         # === حلقة الأفعال البشرية ===
         # الأوزان: تمرير لأسفل أكثر شيء، ثم ضغط، ثم حركة موس، ثم توقف قراءة، ثم hover، ثم تمرير لأعلى
-        ACTIONS = (
-            ['scroll_dn'] * 4 +
-            ['click']     * 3 +
-            ['move']      * 2 +
-            ['pause']     * 2 +
-            ['hover']     * 1 +
-            ['scroll_up'] * 1
-        )
+        # ميل الأفعال حسب الشخصية (#4)
+        if persona == 'bouncer':      # يمرّر بسرعة ويطلع، تفاعل أقل
+            ACTIONS = (['scroll_dn'] * 5 + ['move'] * 2 + ['pause'] * 1 + ['click'] * 1)
+        elif persona == 'reader':     # قراءة متعمّقة: توقفات وتمرير أكثر
+            ACTIONS = (['scroll_dn'] * 4 + ['pause'] * 4 + ['click'] * 2 +
+                       ['move'] * 2 + ['hover'] * 2 + ['scroll_up'] * 2)
+        else:                          # scanner: متوازن
+            ACTIONS = (['scroll_dn'] * 4 + ['click'] * 3 + ['move'] * 2 +
+                       ['pause'] * 2 + ['hover'] * 1 + ['scroll_up'] * 1)
 
         try:
             vw = await page.evaluate('window.innerWidth')
@@ -647,8 +698,13 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         total_s = int(time.time() - t_start)
         with _lock:
             _stats['ok'] += 1
+        # نلتقط كوكيز الموقع لإعادة استخدامها كزائر عائد لاحقاً (#2)
+        if context and not reuse_state:
+            try: _save_ctx_state(await context.storage_state())
+            except Exception: pass
+        rv = ' ↩' if reuse_state else ''
         sc = f'[{resp.status}]' if resp else ''
-        add_log(f'✓ {sid:04d} {sc} {dev["name"]}  {nav_ms}ms  {total_s}s  {locale}')
+        add_log(f'✓ {sid:04d} {sc} {dev["name"]}  {nav_ms}ms  {total_s}s  {locale} {persona}{rv}')
 
     except DeadLink as dl:
         with _lock:
@@ -699,6 +755,11 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
         add_log('✅ الرابط حي — بدء التشغيل الكامل')
 
         sem = asyncio.Semaphore(concurrency)
+        RAMP_GAP       = 0.4    # تصاعد تدريجي في البداية (#5) — ثانية لكل جلسة أولى
+        OFFPEAK_SPREAD = 6.0    # أقصى تباعد إضافي في ساعات الهدوء (#3)
+        w0 = _hour_weight()
+        add_log(f'⏰ وزن الساعة {time.localtime().tm_hour:02d}:00 = {w0:.2f} '
+                f'({"ذروة" if w0>=0.8 else "هدوء" if w0<=0.3 else "عادي"})')
 
         async def bounded(i):
             if _state['stop']:
@@ -709,6 +770,13 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
                     if done >= 10 and _stats['err'] / done * 100 >= err_thresh:
                         _state['stop'] = True
                         return
+            # تصاعد تدريجي (#5): أول موجة جلسات تدخل مبعثرة بدل دفعة واحدة
+            if i <= concurrency:
+                await asyncio.sleep(i * RAMP_GAP)
+            # تشكيل حسب ساعة اليوم (#3): تباعد أكبر وقت الهدوء = RPS أقل طبيعياً
+            w = _hour_weight()
+            if w < 1.0:
+                await asyncio.sleep(random.uniform(0, (1.0 - w) * OFFPEAK_SPREAD))
             async with sem:
                 if _state['stop']:
                     return
