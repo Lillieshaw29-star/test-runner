@@ -136,20 +136,20 @@ def _pause_campaign(reason=''):
 
 # ===== Devices & constants =====
 DEVICES = [
-    # iPhones — platform=iPhone, vendor=Apple Computer, Inc., no chrome object
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1','vw':390,'vh':844,'dpr':3.0,'name':'iPhone 15','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari'},
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1','vw':375,'vh':812,'dpr':2.0,'name':'iPhone 12','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari'},
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1','vw':430,'vh':932,'dpr':3.0,'name':'iPhone 15 Pro Max','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari'},
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/135.0.7049.83 Mobile/15E148 Safari/604.1','vw':390,'vh':844,'dpr':3.0,'name':'iPhone 15 Chrome','platform':'iPhone','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"'},
-    # Android — platform=Linux aarch64, vendor=Google Inc.
-    {'ua':'Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':412,'vh':915,'dpr':3.5,'name':'Pixel 9 Pro','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36','vw':360,'vh':780,'dpr':3.0,'name':'Samsung S24','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="134", "Google Chrome";v="134", "Not-A.Brand";v="99"'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; Redmi Note 13 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.137 Mobile Safari/537.36','vw':393,'vh':851,'dpr':2.75,'name':'Redmi Note 13','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="133", "Google Chrome";v="133", "Not-A.Brand";v="99"'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-A556B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':360,'vh':800,'dpr':2.0,'name':'Samsung A55','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; 23127PN0CC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6834.163 Mobile Safari/537.36','vw':393,'vh':873,'dpr':2.75,'name':'Xiaomi 14T','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="132", "Google Chrome";v="132", "Not-A.Brand";v="99"'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; CPH2609) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36','vw':412,'vh':892,'dpr':2.625,'name':'OPPO Reno12','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="134", "Google Chrome";v="134", "Not-A.Brand";v="99"'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-F956B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':390,'vh':882,'dpr':2.0,'name':'Galaxy Z Fold6','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; V2309) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.137 Mobile Safari/537.36','vw':392,'vh':848,'dpr':3.0,'name':'Vivo V30','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="133", "Google Chrome";v="133", "Not-A.Brand";v="99"'},
+    # iPhones — is_ios=True, no deviceMemory/connection/chrome on iOS, Apple GPU
+    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1','vw':390,'vh':844,'dpr':3.0,'name':'iPhone 15','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari','is_ios':True,'ios_ver':'18.3','ios_model':'iPhone15,2','cores':6,'mem':None,'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'},
+    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1','vw':375,'vh':812,'dpr':2.0,'name':'iPhone 12','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari','is_ios':True,'ios_ver':'18.1','ios_model':'iPhone13,2','cores':6,'mem':None,'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'},
+    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1','vw':430,'vh':932,'dpr':3.0,'name':'iPhone 15 Pro Max','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari','is_ios':True,'ios_ver':'18.3','ios_model':'iPhone15,3','cores':6,'mem':None,'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'},
+    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/135.0.7049.83 Mobile/15E148 Safari/604.1','vw':390,'vh':844,'dpr':3.0,'name':'iPhone 15 Chrome','platform':'iPhone','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"','is_ios':True,'ios_ver':'17.6','ios_model':'iPhone15,2','cores':6,'mem':None,'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'},
+    # Android — is_ios=False, Snapdragon/Exynos/Dimensity GPUs
+    {'ua':'Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':412,'vh':915,'dpr':3.5,'name':'Pixel 9 Pro','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'Qualcomm','webgl_renderer':'Adreno (TM) 750'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36','vw':360,'vh':780,'dpr':3.0,'name':'Samsung S24','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="134", "Google Chrome";v="134", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Mali-G715-Immortalis MC10'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; Redmi Note 13 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.137 Mobile Safari/537.36','vw':393,'vh':851,'dpr':2.75,'name':'Redmi Note 13','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="133", "Google Chrome";v="133", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Mali-G610 MC4'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-A556B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':360,'vh':800,'dpr':2.0,'name':'Samsung A55','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Xclipse 530'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; 23127PN0CC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6834.163 Mobile Safari/537.36','vw':393,'vh':873,'dpr':2.75,'name':'Xiaomi 14T','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="132", "Google Chrome";v="132", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Mali-G615 MC6'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; CPH2609) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36','vw':412,'vh':892,'dpr':2.625,'name':'OPPO Reno12','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="134", "Google Chrome";v="134", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Mali-G615 MC2'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-F956B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':390,'vh':882,'dpr':2.0,'name':'Galaxy Z Fold6','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'Qualcomm','webgl_renderer':'Adreno (TM) 750'},
+    {'ua':'Mozilla/5.0 (Linux; Android 14; V2309) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.137 Mobile Safari/537.36','vw':392,'vh':848,'dpr':3.0,'name':'Vivo V30','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="133", "Google Chrome";v="133", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'Qualcomm','webgl_renderer':'Adreno (TM) 720'},
 ]
 
 # locale + timezone matched per proxy country
@@ -194,9 +194,16 @@ def _fbclid():
     pre = random.choice(_FBCLID_PREFIXES)
     return pre + ''.join(random.choice(_FBCLID_CHARS) for _ in range(random.randint(40, 58)))
 
-# UA تطبيق فيسبوك/ماسنجر الداخلي (أندرويد فقط — الـ webview كروم بيضيف التوكن ده)
+# UA تطبيق فيسبوك/ماسنجر: أندرويد FB4A/Orca-Android ، آيفون FBIOS/MessengerLite
 _FB_AND_VERS = ['449.0.0.35.108', '452.0.0.41.109', '455.0.0.49.60', '458.0.0.36.109']
-def _fb_app_ua(base_ua, is_messenger=False):
+_FB_IOS_VERS = ['449.0.0.35.121', '452.0.0.41.120', '455.0.0.49.70', '458.0.0.36.118']
+def _fb_app_ua(base_ua, is_messenger=False, is_ios=False, ios_ver='18.3', ios_model='iPhone15,2', dpr=3.0):
+    if is_ios:
+        v   = random.choice(_FB_IOS_VERS)
+        app = 'MessengerLite' if is_messenger else 'FBIOS'
+        ss  = max(1, int(dpr))
+        return (base_ua + f' [FBAN/{app};FBDV/{ios_model};FBMD/iPhone;FBSN/iOS;'
+                f'FBSV/{ios_ver};FBSS/{ss};FBID/phone;FBLC/ar_AR;FBOP/5]')
     v   = random.choice(_FB_AND_VERS)
     app = 'Orca-Android' if is_messenger else 'FB4A'
     return base_ua + f' [FB_IAB/{app};FBAV/{v};IABMV/1]'
@@ -222,11 +229,14 @@ def _build_url(base_url, traffic_mix, locale='en'):
     return final, referer
 STEALTH_JS = """
 (function(){
+const _ios=__IS_IOS__;
+const _wv='__WEBGL_VENDOR__',_wr='__WEBGL_RENDERER__';
+
 // --- webdriver ---
 Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
 
-// --- plugins ---
-Object.defineProperty(navigator,'plugins',{get:()=>[1,2,3,4,5]});
+// --- plugins: empty on iOS Safari, minimal list for Chrome Android ---
+Object.defineProperty(navigator,'plugins',{get:()=>_ios?[]:[{name:'Chrome PDF Plugin'},{name:'Chrome PDF Viewer'},{name:'Native Client'}]});
 
 // --- languages + locale ---
 Object.defineProperty(navigator,'language',{get:()=>'__LOCALE__'});
@@ -238,62 +248,56 @@ Object.defineProperty(navigator,'platform',{get:()=>'__PLATFORM__'});
 // --- vendor per engine ---
 Object.defineProperty(navigator,'vendor',{get:()=>'__VENDOR__'});
 
-// --- hardware concurrency (2-8 random) ---
-Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>[2,4,6,8][Math.floor(Math.random()*4)]});
+// --- hardware concurrency: device-accurate constant ---
+Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>__CORES__});
 
-// --- device memory ---
-Object.defineProperty(navigator,'deviceMemory',{get:()=>[2,4,6,8][Math.floor(Math.random()*4)]});
+// --- device memory: Android only (iOS Safari doesn't expose this) ---
+if(!_ios){try{Object.defineProperty(navigator,'deviceMemory',{get:()=>__MEM__});}catch(e){}}
 
 // --- touch ---
 Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});
 
-// --- chrome runtime (chrome engine only) ---
+// --- chrome runtime (chrome engine only, not iOS Safari) ---
 if('__ENGINE__'==='chrome'){
   window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}};
 }
 
 // --- permissions ---
-const _orig=window.navigator.permissions.query;
-window.navigator.permissions.query=(p)=>p.name==='notifications'?Promise.resolve({state:'denied'}):_orig(p);
+try{
+  const _orig=window.navigator.permissions&&window.navigator.permissions.query;
+  if(_orig){window.navigator.permissions.query=(p)=>p.name==='notifications'?Promise.resolve({state:'denied'}):_orig.call(window.navigator.permissions,p);}
+}catch(e){}
 
 // --- WebRTC leak block ---
 ['RTCPeerConnection','webkitRTCPeerConnection'].forEach(k=>{
   if(!window[k]) return;
   const _C=window[k];
-  window[k]=function(cfg){
-    if(cfg&&cfg.iceServers) cfg.iceServers=[];
-    return new _C(cfg);
-  };
+  window[k]=function(cfg){if(cfg&&cfg.iceServers)cfg.iceServers=[];return new _C(cfg);};
   window[k].prototype=_C.prototype;
 });
 
-// --- Canvas noise ---
+// --- Canvas noise: per-session seed __NOISE_SEED__ (1-254) ---
+const _seed=__NOISE_SEED__;
 const _toDataURL=HTMLCanvasElement.prototype.toDataURL;
 const _getImageData=CanvasRenderingContext2D.prototype.getImageData;
 HTMLCanvasElement.prototype.toDataURL=function(){
   const ctx=this.getContext('2d');
   if(ctx&&this.width>0&&this.height>0){
     const img=_getImageData.call(ctx,0,0,this.width,this.height);
-    for(let i=0;i<img.data.length;i+=17) img.data[i]^=1;
+    for(let i=0;i<img.data.length;i+=17)img.data[i]^=_seed;
     ctx.putImageData(img,0,0);
   }
   return _toDataURL.apply(this,arguments);
 };
 
-// --- WebGL fingerprint noise ---
-const _getParam=WebGLRenderingContext.prototype.getParameter;
-WebGLRenderingContext.prototype.getParameter=function(p){
-  if(p===37445) return 'ARM';
-  if(p===37446) return 'Mali-G78';
-  return _getParam.call(this,p);
-};
+// --- WebGL: device-accurate vendor + renderer ---
+if(window.WebGLRenderingContext){
+  const _g=WebGLRenderingContext.prototype.getParameter;
+  WebGLRenderingContext.prototype.getParameter=function(p){if(p===37445)return _wv;if(p===37446)return _wr;return _g.call(this,p);};
+}
 if(window.WebGL2RenderingContext){
   const _g2=WebGL2RenderingContext.prototype.getParameter;
-  WebGL2RenderingContext.prototype.getParameter=function(p){
-    if(p===37445) return 'ARM';
-    if(p===37446) return 'Mali-G78';
-    return _g2.call(this,p);
-  };
+  WebGL2RenderingContext.prototype.getParameter=function(p){if(p===37445)return _wv;if(p===37446)return _wr;return _g2.call(this,p);};
 }
 
 // --- Screen match viewport ---
@@ -304,24 +308,22 @@ Object.defineProperty(screen,'availHeight',{get:()=>window.innerHeight-50});
 Object.defineProperty(screen,'colorDepth',{get:()=>24});
 Object.defineProperty(screen,'pixelDepth',{get:()=>24});
 
-// --- navigator.connection (Network Information API) ---
-try{
-  const conn={effectiveType:['4g','4g','4g','3g'][Math.floor(Math.random()*4)],
-               downlink:Math.round((5+Math.random()*45)*10)/10,
-               rtt:[50,80,100,150][Math.floor(Math.random()*4)],
-               saveData:false,onchange:null,addEventListener:()=>{},removeEventListener:()=>{}};
-  Object.defineProperty(navigator,'connection',{get:()=>conn});
-  Object.defineProperty(navigator,'mozConnection',{get:()=>conn});
-}catch(e){}
+// --- navigator.connection: Android only (iOS has no Network Information API) ---
+if(!_ios){
+  try{
+    const conn={effectiveType:'4g',downlink:Math.round((5+Math.random()*45)*10)/10,
+                rtt:[50,80,100][Math.floor(Math.random()*3)],
+                saveData:false,onchange:null,addEventListener:()=>{},removeEventListener:()=>{}};
+    Object.defineProperty(navigator,'connection',{get:()=>conn});
+    Object.defineProperty(navigator,'mozConnection',{get:()=>conn});
+  }catch(e){}
+}
 
 // --- Battery API ---
 if(navigator.getBattery){
   const lvl=Math.round((0.3+Math.random()*0.6)*100)/100;
-  navigator.getBattery=()=>Promise.resolve({
-    charging:Math.random()>0.6,chargingTime:Infinity,
-    dischargingTime:Math.floor(Math.random()*7200)+1800,
-    level:lvl,addEventListener:()=>{},removeEventListener:()=>{}
-  });
+  navigator.getBattery=()=>Promise.resolve({charging:Math.random()>0.6,chargingTime:Infinity,
+    dischargingTime:Math.floor(Math.random()*7200)+1800,level:lvl,addEventListener:()=>{},removeEventListener:()=>{}});
 }
 
 // --- Performance timing noise ---
@@ -430,11 +432,14 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
 
     final_url, ref = _build_url(url, traffic_mix, locale)
 
-    # UA تطبيق فيسبوك الداخلي (أندرويد): الزيارة تبان إنها اتفتحت جوه تطبيق فيسبوك/ماسنجر
-    ua = dev['ua']
-    is_android = 'iphone' not in dev.get('platform', '').lower()
-    if ref and is_android and ('facebook.com' in ref or 'messenger' in ref) and random.random() < 0.8:
-        ua = _fb_app_ua(ua, 'messenger' in ref)
+    # UA تطبيق فيسبوك الداخلي: آيفون FBAN/FBIOS ، أندرويد FB_IAB/FB4A
+    ua     = dev['ua']
+    is_ios = dev.get('is_ios', False)
+    if ref and ('facebook.com' in ref or 'messenger' in ref) and random.random() < 0.8:
+        ua = _fb_app_ua(ua, 'messenger' in ref, is_ios=is_ios,
+                        ios_ver=dev.get('ios_ver','18.3'),
+                        ios_model=dev.get('ios_model','iPhone15,2'),
+                        dpr=dev.get('dpr',3.0))
 
     def _launch_opts(pstr):
         opts = {
@@ -464,12 +469,20 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         hdrs['Sec-CH-UA-Mobile'] = '?1'
         hdrs['Sec-CH-UA-Platform'] = '"Android"' if 'Linux' in dev.get('platform','') else '"iOS"'
 
+    noise_seed = random.randint(2, 254)
+    mem_val    = dev.get('mem')
     stealth = (STEALTH_JS
-               .replace('__LOCALE__', locale)
-               .replace('__LOCALE2__', locale[:2])
-               .replace('__PLATFORM__', dev.get('platform', 'Linux aarch64'))
-               .replace('__VENDOR__', dev.get('vendor', 'Google Inc.'))
-               .replace('__ENGINE__', dev.get('engine', 'chrome')))
+               .replace('__IS_IOS__',        'true' if is_ios else 'false')
+               .replace('__LOCALE__',        locale)
+               .replace('__LOCALE2__',       locale[:2])
+               .replace('__PLATFORM__',      dev.get('platform', 'Linux aarch64'))
+               .replace('__VENDOR__',        dev.get('vendor', 'Google Inc.'))
+               .replace('__ENGINE__',        dev.get('engine', 'chrome'))
+               .replace('__CORES__',         str(dev.get('cores', 8)))
+               .replace('__MEM__',           str(mem_val) if mem_val is not None else '4')
+               .replace('__WEBGL_VENDOR__',  dev.get('webgl_vendor', 'ARM'))
+               .replace('__WEBGL_RENDERER__',dev.get('webgl_renderer', 'Mali-G78'))
+               .replace('__NOISE_SEED__',    str(noise_seed)))
 
     browser = None
     t_start = time.time()
