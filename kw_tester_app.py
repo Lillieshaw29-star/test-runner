@@ -285,6 +285,10 @@ DEVICES = [
     _and('Infinix X6833B', _C131, 360, 800, 'ARM', 'Mali-G57 MC2',          'Infinix Note 30', dpr=3.0, mem=8, av='13'),
 ]
 
+# فصل الأجهزة: أندرويد = Chrome Mobile (CPM عالي) | آيفون = Safari (CPM ضعيف على هذا العرض)
+_ANDROID_DEVS = [d for d in DEVICES if not d.get('is_ios')]
+_IOS_DEVS     = [d for d in DEVICES if d.get('is_ios')]
+
 # locale + timezone matched per proxy country
 COUNTRY_PROFILES = {
     'gb': {'locales': ['en-GB','en'],        'tz': 'Europe/London'},
@@ -297,7 +301,10 @@ COUNTRY_PROFILES = {
     'it': {'locales': ['it-IT','it','en'],   'tz': 'Europe/Rome'},
     'es': {'locales': ['es-ES','es','en'],   'tz': 'Europe/Madrid'},
     'se': {'locales': ['sv-SE','sv','en'],   'tz': 'Europe/Stockholm'},
-    'default': {'locales': ['en-US','en'],   'tz': 'America/New_York'},  # افتراضي إنجليزي (مش عربي) للترافيك الغربي
+    'sa': {'locales': ['ar-SA','ar','en'],   'tz': 'Asia/Riyadh'},
+    'pk': {'locales': ['en-PK','ur-PK','en'],'tz': 'Asia/Karachi'},
+    'eg': {'locales': ['ar-EG','ar','en'],   'tz': 'Africa/Cairo'},
+    'default': {'locales': ['en-US','en'],   'tz': 'America/New_York'},  # افتراضي إنجليزي للترافيك الغربي
 }
 
 LOCALES   = ['ar-EG','ar-SA','ar-AE','ar-JO','ar-MA']
@@ -697,7 +704,13 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
     # زائر عائد؟ (#2) — يبدأ من كوكيز محفوظة عشان يبان returning للموقع
     reuse_state = _pick_ctx_state() if random.random() < RETURNING_RATE else None
 
-    dev = random.choice(DEVICES)
+    # اختيار الجهاز موزون: أندرويد (Chrome Mobile) CPM أعلى بكتير من آيفون على هذا العرض،
+    # بس نسيب آيفونات كفاية عشان التوزيع يبان طبيعي (جمهور فيسبوك حقيقي فيه الاتنين).
+    # ~80% أندرويد + ~20% آيفون.
+    if _ANDROID_DEVS and (not _IOS_DEVS or random.random() < 0.80):
+        dev = random.choice(_ANDROID_DEVS)
+    else:
+        dev = random.choice(_IOS_DEVS or DEVICES)
 
     # detect proxy country for locale/timezone matching
     proxy_country = 'default'
