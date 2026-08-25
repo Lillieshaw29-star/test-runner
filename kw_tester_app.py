@@ -148,57 +148,48 @@ LOCALES   = ['ar-EG','ar-SA','ar-AE','ar-JO','ar-MA']
 
 # مصادر حسب اللغة: en=English markets, ar=Arabic markets
 TRAFFIC_SOURCES_EN = [
-    ('https://www.google.com/search?q=best+earn+money+online',      'google',    'organic', 'search'),
-    ('https://www.google.com/search?q=how+to+make+money+online',    'google',    'organic', 'search'),
-    ('https://www.google.com/search?q=online+income+ideas',         'google',    'organic', 'search'),
-    ('https://www.google.com/search?q=passive+income+apps',         'google',    'organic', 'search'),
-    ('https://www.google.com/',                                      'google',    'cpc',     'ads'),
-    ('https://www.facebook.com/',                                    'facebook',  'social',  'fb'),
-    ('https://l.facebook.com/',                                      'facebook',  'social',  'fb'),
-    ('https://www.instagram.com/',                                   'instagram', 'social',  'ig'),
-    ('https://t.co/',                                                'twitter',   'social',  'tw'),
-    ('https://x.com/',                                               'twitter',   'social',  'tw'),
-    ('https://www.youtube.com/',                                     'youtube',   'social',  'yt'),
-    ('https://www.tiktok.com/',                                      'tiktok',    'social',  'tt'),
-    ('https://www.reddit.com/',                                      'reddit',    'social',  'rd'),
-    ('',                                                             '',          '',        ''),
-    ('',                                                             '',          '',        ''),
+    # ── إعلانات فيسبوك (paid) ~40% ──
+    ('https://l.facebook.com/',    'facebook',  'paid_social', 'fb_ads'),
+    ('https://www.facebook.com/',  'facebook',  'paid_social', 'fb_ads'),
+    ('https://l.facebook.com/',    'facebook',  'paid_social', 'fb_ads'),
+    ('https://m.facebook.com/',    'facebook',  'paid_social', 'fb_ads'),
+    # ── منشور فيسبوك (organic) ~30% ──
+    ('https://m.facebook.com/',    'facebook',  'social',      'fb_post'),
+    ('https://l.facebook.com/',    'facebook',  'social',      'fb_post'),
+    ('https://www.facebook.com/',  'facebook',  'social',      'fb_post'),
+    # ── رسائل ماسنجر ~30% ──
+    ('https://l.facebook.com/',    'messenger', 'social',      'fb_message'),
+    ('https://l.messenger.com/',   'messenger', 'social',      'fb_message'),
+    ('https://l.facebook.com/',    'messenger', 'social',      'fb_message'),
 ]
-TRAFFIC_SOURCES_AR = [
-    ('https://www.google.com/search?q=تطبيق+تسويق+سوشيال+ميديا',   'google',   'organic', 'search'),
-    ('https://www.google.com/search?q=ادارة+صفحات+فيسبوك',          'google',   'organic', 'search'),
-    ('https://www.google.com/search?q=ربح+من+الانترنت',             'google',   'organic', 'search'),
-    ('https://www.google.com/',                                       'google',   'cpc',     'ads'),
-    ('https://www.facebook.com/',                                     'facebook', 'social',  'fb'),
-    ('https://l.facebook.com/',                                       'facebook', 'social',  'fb'),
-    ('https://m.facebook.com/',                                       'facebook', 'social',  'fb'),
-    ('https://www.instagram.com/',                                    'instagram','social',  'ig'),
-    ('https://t.co/',                                                 'twitter',  'social',  'tw'),
-    ('https://www.youtube.com/',                                      'youtube',  'social',  'yt'),
-    ('https://web.whatsapp.com/',                                     'whatsapp', 'social',  'wa'),
-    ('',                                                              '',         '',        ''),
-    ('',                                                              '',         '',        ''),
-]
+# الفيسبوك واحد في كل اللغات — نفس القنوات للعربي والأجنبي
+TRAFFIC_SOURCES_AR = TRAFFIC_SOURCES_EN
 # legacy alias
 TRAFFIC_SOURCES = TRAFFIC_SOURCES_EN
 
-UTM_CONTENTS = ['banner','story','reel','post','feed','link','bio']
+UTM_CONTENTS = ['feed','story','reel','post','link','bio','ad']
+
+# fbclid: معرّف نقرة فيسبوك — يُضاف على كل زيارة عشان تبان طبيعية جاية من الفيس
+_FBCLID_CHARS = string.ascii_letters + string.digits + '-_'
+def _fbclid():
+    return 'IwAR' + ''.join(random.choice(_FBCLID_CHARS) for _ in range(36))
 
 def _build_url(base_url, traffic_mix, locale='en'):
-    """يضيف UTM عشوائي ويرجع (final_url, referer)"""
+    """يبني الزيارة كأنها جاية من فيسبوك (إعلان/منشور/رسالة) مع fbclid وUTM"""
     if not traffic_mix:
-        return base_url, random.choice(['https://www.google.com/', ''])
+        return base_url, random.choice(['https://l.facebook.com/', 'https://m.facebook.com/'])
     pool = TRAFFIC_SOURCES_AR if locale.startswith('ar') else TRAFFIC_SOURCES_EN
     src = random.choice(pool)
     referer, utm_src, utm_med, utm_camp = src
     if not utm_src:
-        return base_url, ''
-    content  = random.choice(UTM_CONTENTS)
-    sep      = '&' if '?' in base_url else '?'
-    final    = (f'{base_url}{sep}utm_source={utm_src}'
-                f'&utm_medium={utm_med}'
-                f'&utm_campaign={utm_camp}'
-                f'&utm_content={content}')
+        return base_url, referer
+    content = random.choice(UTM_CONTENTS)
+    sep     = '&' if '?' in base_url else '?'
+    final   = (f'{base_url}{sep}utm_source={utm_src}'
+               f'&utm_medium={utm_med}'
+               f'&utm_campaign={utm_camp}'
+               f'&utm_content={content}'
+               f'&fbclid={_fbclid()}')
     return final, referer
 STEALTH_JS = """
 (function(){
