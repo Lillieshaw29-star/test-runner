@@ -782,9 +782,16 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
                 await popup.wait_for_load_state('domcontentloaded', timeout=8000)
                 with _lock:
                     _stats['popunder'] = _stats.get('popunder', 0) + 1
-                await asyncio.sleep(random.uniform(1.0, 2.2))
+                # الظهور اتحسب (beacon على التحميل). نسيبه ~7ث بس (مشاهدة واقعية) ثم نقفله —
+                # يمنع إن العرض يفضل يشفط داتا ويضاعف الصفحات (سبب تخنق الرنرات) طول الجلسة.
+                await asyncio.sleep(random.uniform(1.0, 2.0))
                 try:
-                    await popup.evaluate("window.scrollBy(0, %d)" % random.randint(180, 460))
+                    await popup.evaluate("window.scrollBy(0, %d)" % random.randint(160, 420))
+                except Exception:
+                    pass
+                await asyncio.sleep(random.uniform(3.5, 5.5))
+                try:
+                    await popup.close()
                 except Exception:
                     pass
             except Exception:
@@ -1055,7 +1062,7 @@ def _cpu_count():
     except Exception:
         return 4
 
-HARD_CAP = 16   # سقف صارم لكل رنر — أقل لأن الـpopunder بيضاعف تكلفة الجلسة (صفحتين)
+HARD_CAP = 12   # سقف صارم — الـpopunder بيفتح صفحة تانية مؤقتاً فبنحسبها
 
 async def _autoscaler(max_target):
     """يعدّل _autoscale['target'] — الأولوية لبقاء الرنر حيًّا مش عصر آخر متصفح."""
@@ -1077,8 +1084,8 @@ async def _autoscaler(max_target):
         tgt = _autoscale['target']
         # باك-أوف مبكر للحفاظ على استجابة الرنر (وكيل GitHub لازم يفضل يرد وإلا يعتبره ميت)
         # نراقب الـload مش الـCPU بس — الـload بيمسك ازدحام الطابور وانتظار I/O
-        if load > cores * 3.5 or mem < 400:
-            new = max(2, tgt // 2)          # فرملة طوارئ — الرنر بيختنق
+        if load > cores * 2.8 or mem < 500:
+            new = max(2, tgt // 2)          # فرملة طوارئ مبكرة — الرنر بيختنق
         elif cpu > 82 or load > cores * 2.2 or mem < 700 or errp > 20:
             new = max(2, tgt - 2)
         # مساحة آمنة → زوّد متصفح واحد بحذر
