@@ -768,6 +768,23 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             ctx_opts['storage_state'] = reuse_state
         ctx = await b.new_context(**ctx_opts)
         await ctx.add_init_script(stealth)
+        # تعامل مع الـpopunder: موقع smartlink بيفتح العرض في تاب جديد —
+        # نستنى العرض يحمّل ونعمل سكرول خفيف عشان الظهور يتحسب والزيارة تبان حقيقية.
+        async def _on_popup(popup):
+            try:
+                await popup.wait_for_load_state('domcontentloaded', timeout=15000)
+                with _lock:
+                    _stats['popunder'] = _stats.get('popunder', 0) + 1
+                await asyncio.sleep(random.uniform(1.5, 3.5))
+                for _ in range(random.randint(1, 3)):
+                    try:
+                        await popup.evaluate("window.scrollBy(0, %d)" % random.randint(180, 520))
+                    except Exception:
+                        break
+                    await asyncio.sleep(random.uniform(0.8, 2.2))
+            except Exception:
+                pass
+        ctx.on('page', lambda p: asyncio.create_task(_on_popup(p)))
         pg = await ctx.new_page()
         # === وضع توفير البيانات: نمنع الصور/الفيديو/الخطوط (بتوفّر ~80% من الداتا) ===
         # الـHTML والجافاسكريبت (التحليلات/بيكسل فيسبوك) بيحمّلوا عادي فالزيارة تتسجّل،
@@ -883,6 +900,7 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         do_ad_click = random.random() < AD_CLICK_RATE
         ad_clicked  = False
         _next_ad_try = 5.0   # أول محاولة بعد 5 ثوانٍ، وبعدها يعيد كل ~6 ثوانٍ
+        nav_recover = 0      # عدّاد استرجاع بعد التنقّل (redirect للعرض)
 
         while (time.time() - t_start) < duration and not _state['stop']:
             try:
@@ -952,8 +970,21 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
                     except Exception:
                         pass
 
+                nav_recover = 0   # الدورة نجحت — صفّر عدّاد استرجاع التنقّل
+
             except Exception:
-                break  # context destroyed (navigation) — أنهِ الجلسة
+                # الصفحة اتنقّلت (redirect للعرض/smartlink)؟ نلحقها ونكمّل التصفّح عليها بدل ما نخرج
+                nav_recover += 1
+                if nav_recover > 5:
+                    break
+                try:
+                    await page.wait_for_load_state('domcontentloaded', timeout=9000)
+                    await asyncio.sleep(random.uniform(0.6, 1.8))
+                    vw = await page.evaluate('window.innerWidth')
+                    vh = await page.evaluate('window.innerHeight')
+                    add_log(f'  ↪ {sid:04d} تابع التحويل — بيتصفّح صفحة العرض')
+                except Exception:
+                    break  # الصفحة فعلاً ماتت
 
         total_s = int(time.time() - t_start)
         with _lock:
