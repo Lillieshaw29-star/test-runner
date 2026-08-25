@@ -247,6 +247,46 @@ def _fb_app_ua(base_ua, is_messenger=False, is_ios=False, ios_ver='18.3', ios_mo
     app = 'Orca-Android' if is_messenger else 'FB4A'
     return base_ua + f' [FB_IAB/{app};FBAV/{v};IABMV/1]'
 
+# === Client Hints متطابقة مع الـ UA (#1) ===
+# أندرويد كروم بس بيبعت Client Hints. iOS (Safari وCriOS) مالهاش userAgentData ولا CH.
+def _client_hints(dev):
+    """يبني هيدرز Sec-CH-UA-* + بيانات userAgentData متطابقة مع UA الجهاز."""
+    if dev.get('is_ios') or dev.get('engine') != 'chrome' or not dev.get('ch_ua'):
+        return {}, None
+    import re
+    ua    = dev['ua']
+    m_av  = re.search(r'Android (\d+)', ua)
+    m_md  = re.search(r'Android \d+; ([^)]+)\)', ua)
+    m_cv  = re.search(r'Chrome/([\d.]+)', ua)
+    av    = m_av.group(1) if m_av else '14'
+    model = m_md.group(1).strip() if m_md else ''
+    cver  = m_cv.group(1) if m_cv else '120.0.0.0'
+    pv    = f'{av}.0.0'
+    brands = []
+    for part in dev['ch_ua'].split(','):
+        pm = re.search(r'"([^"]+)";v="([^"]+)"', part)
+        if pm:
+            brands.append({'brand': pm.group(1), 'version': pm.group(2)})
+    fvl = []
+    for b in brands:
+        is_mask = ('Not' in b['brand']) or ('Brand' in b['brand'])
+        fvl.append({'brand': b['brand'], 'version': ('99.0.0.0' if is_mask else cver)})
+    fvl_hdr = ', '.join(f'"{b["brand"]}";v="{b["version"]}"' for b in fvl)
+    headers = {
+        'Sec-CH-UA':                   dev['ch_ua'],
+        'Sec-CH-UA-Mobile':            '?1',
+        'Sec-CH-UA-Platform':          '"Android"',
+        'Sec-CH-UA-Model':             f'"{model}"',
+        'Sec-CH-UA-Platform-Version':  f'"{pv}"',
+        'Sec-CH-UA-Full-Version-List': fvl_hdr,
+        'Sec-CH-UA-Arch':              '""',
+        'Sec-CH-UA-Bitness':           '""',
+    }
+    uad = {'brands': brands, 'mobile': True, 'platform': 'Android',
+           'model': model, 'platformVersion': pv, 'uaFullVersion': cver,
+           'fullVersionList': fvl, 'architecture': '', 'bitness': ''}
+    return headers, uad
+
 PROXY_RETRIES = 2   # محاولات فتح إضافية ببروكسي تالي عند الفشل (بدون شطب أي بروكسي)
 
 def _build_url(base_url, traffic_mix, locale='en'):
@@ -300,6 +340,29 @@ Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});
 if('__ENGINE__'==='chrome'){
   window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}};
 }
+
+// --- navigator.userAgentData: متطابق مع UA (أندرويد) أو غير موجود (iOS/Safari) (#1) ---
+(function(){
+  const _uad=__UAD__;
+  if(_uad){
+    const he={architecture:_uad.architecture,bitness:_uad.bitness,model:_uad.model,
+              platformVersion:_uad.platformVersion,uaFullVersion:_uad.uaFullVersion,
+              fullVersionList:_uad.fullVersionList,brands:_uad.brands,
+              mobile:_uad.mobile,platform:_uad.platform,wow64:false};
+    const low={brands:_uad.brands,mobile:_uad.mobile,platform:_uad.platform};
+    const uaData={brands:_uad.brands,mobile:_uad.mobile,platform:_uad.platform,
+      getHighEntropyValues:(hints)=>Promise.resolve((()=>{
+        const o=Object.assign({},low);
+        (hints||[]).forEach(h=>{ if(h in he) o[h]=he[h]; });
+        return o;
+      })()),
+      toJSON:()=>Object.assign({},low)};
+    try{Object.defineProperty(navigator,'userAgentData',{get:()=>uaData,configurable:true});}catch(e){}
+  } else {
+    // iOS / Safari: الخاصية دي مالهاش وجود أصلاً
+    try{Object.defineProperty(navigator,'userAgentData',{get:()=>undefined,configurable:true});}catch(e){}
+  }
+})();
 
 // --- permissions ---
 try{
@@ -509,14 +572,15 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
     }
     if ref:
         hdrs['Referer'] = ref
-    if dev.get('engine') == 'chrome' and dev.get('ch_ua'):
-        hdrs['Sec-CH-UA'] = dev['ch_ua']
-        hdrs['Sec-CH-UA-Mobile'] = '?1'
-        hdrs['Sec-CH-UA-Platform'] = '"Android"' if 'Linux' in dev.get('platform','') else '"iOS"'
+    # Client Hints متطابقة مع UA — أندرويد كروم بس (#1)
+    ch_hdrs, uad = _client_hints(dev)
+    hdrs.update(ch_hdrs)
+    uad_js = json.dumps(uad) if uad else 'null'
 
     noise_seed = random.randint(2, 254)
     mem_val    = dev.get('mem')
     stealth = (STEALTH_JS
+               .replace('__UAD__',           uad_js)
                .replace('__IS_IOS__',        'true' if is_ios else 'false')
                .replace('__LOCALE__',        locale)
                .replace('__LOCALE2__',       locale[:2])
