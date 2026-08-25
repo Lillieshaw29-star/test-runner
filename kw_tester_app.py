@@ -3,7 +3,7 @@
 
 from flask import Flask, render_template_string, request, jsonify, Response
 from playwright.async_api import async_playwright
-import asyncio, threading, json, time, random, string
+import asyncio, threading, json, time, random, string, os
 
 app = Flask(__name__)
 
@@ -36,9 +36,28 @@ CHROMIUM_BIN = _find_chromium()
 _state = {'running': False, 'stop': False}
 _stats = {
     'ok': 0, 'err': 0, 'active': 0, 'total': 0, 't0': 0.0,
-    'log': [], 'codes': {}, 'times': [], 'devices': {}, 'rps_hist': [],
+    'log': [], 'codes': {}, 'times': [], 'devices': {}, 'rps_hist': [], 'dead': 0,
 }
 _lock = threading.Lock()
+
+# دومينات تعني إن الـ Smartlink ميت/موقوف (صفحة Adsterra الاحتياطية) —
+# الهبوط عليها = زيارة مش هتتحسب، فنوقف بدل ما نحرق بروكسي على الفاضي
+DEAD_HOSTS = ('adzilla.meme',)
+DEAD_LIMIT = 5   # عدد الهبوط الميت المتتالي قبل الإيقاف التلقائي
+
+class DeadLink(Exception):
+    """الرابط هبط على صفحة احتياطية ميتة بدل عرض حقيقي."""
+    pass
+
+def _host_of(u):
+    try:
+        from urllib.parse import urlparse
+        return (urlparse(u).hostname or '').lower()
+    except Exception:
+        return ''
+
+def _is_dead_host(host):
+    return any(host == d or host.endswith('.' + d) for d in DEAD_HOSTS)
 
 def parse_proxy(raw):
     if not raw:
@@ -60,13 +79,42 @@ def parse_proxy(raw):
 def reset_stats(total):
     with _lock:
         _stats.update({'ok':0,'err':0,'active':0,'total':total,'t0':time.time(),
-                       'log':[],'codes':{},'times':[],'devices':{},'rps_hist':[]})
+                       'log':[],'codes':{},'times':[],'devices':{},'rps_hist':[],'dead':0})
 
 def add_log(msg):
     with _lock:
         _stats['log'].append(msg)
         if len(_stats['log']) > 300:
             _stats['log'].pop(0)
+
+# ===== استمرارية الحملة (استئناف تلقائي بعد أي rerun للرنر) =====
+# نحفظ آخر حملة جنب السكربت. على الرنر ده /mnt/work/kw_campaign.json
+# اللي بيتزامن مع ghstate ويترجّع كل جوب — فالبوت يكمّل لوحده.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+CAMPAIGN_FILE = os.environ.get('KW_CAMPAIGN_FILE',
+                               os.path.join(_HERE, 'kw_campaign.json'))
+
+def save_campaign(cfg):
+    try:
+        with open(CAMPAIGN_FILE, 'w') as f:
+            json.dump(cfg, f)
+    except Exception:
+        pass
+
+def load_campaign():
+    try:
+        with open(CAMPAIGN_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def _pause_campaign(reason=''):
+    """يعلّم الحملة المحفوظة متوقفة عشان الاستئناف التلقائي ما يعيدش تشغيلها."""
+    c = load_campaign()
+    if c:
+        c['paused'] = True
+        c['pause_reason'] = reason
+        save_campaign(c)
 
 # ===== Devices & constants =====
 DEVICES = [
@@ -430,6 +478,16 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         # === وقت الاستيعاب الأولي — إنسان يشوف الصفحة أول ما تفتح ===
         await asyncio.sleep(random.uniform(0.8, 2.2))
 
+        # === حارس الرابط الميت ===
+        # بعد ما الصفحة تفتح والـ JS يشتغل، لو الرابط حوّل لصفحة احتياطية
+        # (زي adzilla.meme) يبقى الـ Smartlink موقوف — الزيارة مش هتتحسب.
+        try:
+            landed = _host_of(page.url)
+        except Exception:
+            landed = ''
+        if _is_dead_host(landed):
+            raise DeadLink(landed)
+
         # === حلقة الأفعال البشرية ===
         # الأوزان: تمرير لأسفل أكثر شيء، ثم ضغط، ثم حركة موس، ثم توقف قراءة، ثم hover، ثم تمرير لأعلى
         ACTIONS = (
@@ -527,6 +585,16 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         sc = f'[{resp.status}]' if resp else ''
         add_log(f'✓ {sid:04d} {sc} {dev["name"]}  {nav_ms}ms  {total_s}s  {locale}')
 
+    except DeadLink as dl:
+        with _lock:
+            _stats['err'] += 1
+            _stats['dead'] = _stats.get('dead', 0) + 1
+            hit = _stats['dead']
+            if hit >= DEAD_LIMIT:
+                _state['stop'] = True
+        add_log(f'⚠ {sid:04d} DEAD → {dl} (الرابط ميت/موقوف — مش بيتحسب)')
+        if hit >= DEAD_LIMIT:
+            add_log(f'⛔ إيقاف تلقائي: {hit} هبوط ميت متتالي — وفّرنا البروكسي')
     except Exception as e:
         with _lock:
             _stats['err'] += 1
@@ -543,7 +611,26 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
     _state['stop'] = False
     reset_stats(count)
 
+    # بول البروكسيات: حقل proxy ممكن يحمل عدة بروكسيات (واحد في كل سطر) → تدوير لكل جلسة
+    _pool = [p.strip() for p in (proxy or '').replace('\r', '').split('\n') if p.strip()]
+    def _pick(i):
+        return _pool[(i - 1) % len(_pool)] if _pool else None
+
     async with async_playwright() as pw:
+
+        # === فحص مبدئي: جلسة واحدة تتأكد إن الرابط حي قبل ما نصرف بروكسي ===
+        # لو هبطت على صفحة ميتة (adzilla) نوقف فوراً من غير ما نشغّل الأسطول.
+        add_log('🔎 فحص مبدئي للرابط…')
+        await run_session(pw, url, _pick(1), min(duration, 8), 0, 0,
+                          traffic_mix, goto_timeout)
+        if _state['stop'] or _stats.get('dead', 0) > 0:
+            _state['stop'] = True
+            add_log('⛔ توقف: الرابط بيحوّل لصفحة ميتة — لم يُستهلك بروكسي على الفاضي. جدّد الـ Smartlink.')
+            _pause_campaign('dead_link')   # عشان الاستئناف التلقائي ما يعيدش رابط ميت
+            _state['running'] = False
+            return
+        add_log('✅ الرابط حي — بدء التشغيل الكامل')
+
         sem = asyncio.Semaphore(concurrency)
 
         async def bounded(i):
@@ -558,7 +645,7 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
             async with sem:
                 if _state['stop']:
                     return
-                await run_session(pw, url, proxy or None, duration, i, jitter, traffic_mix, goto_timeout)
+                await run_session(pw, url, _pick(i), duration, i, jitter, traffic_mix, goto_timeout)
 
         await asyncio.gather(*[bounded(i) for i in range(1, count+1)])
 
@@ -631,19 +718,13 @@ def test_proxy():
         return jsonify({'ok':False,'msg':f'فشل: {type(e).__name__}: {str(e)[:120]}',
                         'ms':round((time.time()-t0)*1000)})
 
-@app.route('/start', methods=['POST'])
-def start():
-    if _state['running']:
-        return jsonify({'error':'already_running'}), 400
-    d   = request.json or {}
-    url = d.get('url','').strip()
-    if not url:
-        return jsonify({'error':'url_required'}), 400
+def _spawn_campaign(d):
+    """يطلّق الحملة في ثريد مستقل — يستخدمها /start والاستئناف التلقائي."""
     _state['stop']    = False
     _state['running'] = True
     threading.Thread(target=_thread, daemon=True, args=(
-        url,
-        d.get('proxy','').strip() or None,
+        d['url'],
+        (d.get('proxy') or '').strip() or None,
         int(d.get('count',50)),
         int(d.get('concurrency',3)),
         float(d.get('duration',15)),
@@ -652,12 +733,27 @@ def start():
         bool(d.get('traffic_mix', True)),
         int(d.get('goto_timeout', 90000)),
     )).start()
+
+@app.route('/start', methods=['POST'])
+def start():
+    if _state['running']:
+        return jsonify({'error':'already_running'}), 400
+    d   = request.json or {}
+    url = d.get('url','').strip()
+    if not url:
+        return jsonify({'error':'url_required'}), 400
+    d['url']    = url
+    d['paused'] = False                 # بدء يدوي جديد = فعّل الاستئناف التلقائي
+    d.pop('pause_reason', None)
+    save_campaign(d)                     # احفظها عشان تكمّل لوحدها بعد أي rerun
+    _spawn_campaign(d)
     return jsonify({'ok':True})
 
 @app.route('/stop', methods=['POST'])
 def stop():
     _state['stop']    = True
     _state['running'] = False   # فوري — يخلّي الـ UI يستجيب فوراً
+    _pause_campaign('manual_stop')   # إيقاف يدوي = ما يرجعش لوحده في الجوب الجاي
     return jsonify({'ok':True})
 
 @app.route('/export')
@@ -1130,8 +1226,24 @@ subscribe();
 </html>
 '''
 
+def _autostart():
+    """يكمّل آخر حملة أوتوماتيك بعد أي rerun للرنر — من غير ما تفتح الـ UI."""
+    time.sleep(10)   # مهلة عشان الشبكة/playwright يجهزوا
+    c = load_campaign()
+    if not c:
+        add_log('ℹ️ مفيش حملة محفوظة — في انتظار البدء من الـ UI')
+        return
+    if c.get('paused'):
+        add_log(f'⏸️ حملة محفوظة لكن متوقفة ({c.get("pause_reason","")}) — محتاجة رابط جديد من الـ UI')
+        return
+    if _state['running']:
+        return
+    add_log('♻️ استئناف تلقائي لآخر حملة…')
+    _spawn_campaign(c)
+
 if __name__ == '__main__':
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5555
     print(f"KW Mobile Tester v2 → http://0.0.0.0:{port}")
+    threading.Thread(target=_autostart, daemon=True).start()
     app.run(host='0.0.0.0', port=port, threaded=True)
