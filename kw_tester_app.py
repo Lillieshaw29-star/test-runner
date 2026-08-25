@@ -395,6 +395,26 @@ PROXY_RETRIES = 2   # محاولات فتح إضافية ببروكسي تالي
 DATA_SAVER   = True
 _BLOCK_TYPES = ('image', 'media', 'font')   # حجب قوي — الظهور popunder بيتحسب بالـJS مش بالصور
 
+# === تبطيء النت (سرعة موبايل واقعية) ===
+# يقلّل كام يتحمّل من العروض المتجددة في نفس الوقت = توفير داتا + قعدة أطول + يبان موبايل حقيقي.
+NET_THROTTLE    = True
+THROTTLE_DOWN   = 90_000    # bytes/s ≈ 0.72 ميجابت (نت 4G بطيء واقعي)
+THROTTLE_UP     = 30_000
+THROTTLE_LAT    = 160       # ms زمن استجابة موبايل
+
+async def _apply_throttle(page):
+    if not NET_THROTTLE:
+        return
+    try:
+        cdp = await page.context.new_cdp_session(page)
+        await cdp.send('Network.enable')
+        await cdp.send('Network.emulateNetworkConditions', {
+            'offline': False, 'latency': THROTTLE_LAT,
+            'downloadThroughput': THROTTLE_DOWN, 'uploadThroughput': THROTTLE_UP,
+        })
+    except Exception:
+        pass
+
 def _build_url(base_url, traffic_mix, locale='en'):
     """يبني الزيارة كأنها جاية من فيسبوك (إعلان/منشور/رسالة) مع fbclid وUTM"""
     if not traffic_mix:
@@ -779,25 +799,23 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
                 return
             _popup_state['handled'] = True
             try:
-                await popup.wait_for_load_state('domcontentloaded', timeout=8000)
+                await _apply_throttle(popup)   # نبطّئ العرض كمان = يقلّل شفط الإعلانات المتجددة
+                await popup.wait_for_load_state('domcontentloaded', timeout=12000)
                 with _lock:
                     _stats['popunder'] = _stats.get('popunder', 0) + 1
-                # الظهور اتحسب (beacon على التحميل). نسيبه ~7ث بس (مشاهدة واقعية) ثم نقفله —
-                # يمنع إن العرض يفضل يشفط داتا ويضاعف الصفحات (سبب تخنق الرنرات) طول الجلسة.
-                await asyncio.sleep(random.uniform(1.0, 2.0))
-                try:
-                    await popup.evaluate("window.scrollBy(0, %d)" % random.randint(160, 420))
-                except Exception:
-                    pass
-                await asyncio.sleep(random.uniform(3.5, 5.5))
-                try:
-                    await popup.close()
-                except Exception:
-                    pass
+                # نسيبه مفتوح طول الجلسة (قعدة أطول = ربح أعلى لو الشبكة بتحسب الوقت/التحديث).
+                # نمنع التخنق بسقف متصفحات أقل مش بقفل العرض بدري. + سكرول واقعي كل فترة.
+                for _ in range(3):
+                    await asyncio.sleep(random.uniform(3.0, 6.0))
+                    try:
+                        await popup.evaluate("window.scrollBy(0, %d)" % random.randint(150, 420))
+                    except Exception:
+                        break
             except Exception:
                 pass
         ctx.on('page', lambda p: asyncio.create_task(_on_popup(p)))
         pg = await ctx.new_page()
+        await _apply_throttle(pg)          # سرعة موبايل بطيئة (توفير داتا + قعدة أطول)
         # === وضع توفير البيانات: نمنع الصور/الفيديو/الخطوط (بتوفّر ~80% من الداتا) ===
         # الـHTML والجافاسكريبت (التحليلات/بيكسل فيسبوك) بيحمّلوا عادي فالزيارة تتسجّل،
         # والموقع بيشوف متصفح موبايل بوضع موفّر-بيانات (طبيعي تمامًا).
@@ -1062,7 +1080,7 @@ def _cpu_count():
     except Exception:
         return 4
 
-HARD_CAP = 12   # سقف صارم — الـpopunder بيفتح صفحة تانية مؤقتاً فبنحسبها
+HARD_CAP = 8    # سقف أقل — الـpopunder بيفضل مفتوح طول الجلسة (صفحتين ثابتة) فبنقلّل العدد
 
 async def _autoscaler(max_target):
     """يعدّل _autoscale['target'] — الأولوية لبقاء الرنر حيًّا مش عصر آخر متصفح."""
