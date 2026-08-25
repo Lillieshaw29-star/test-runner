@@ -770,18 +770,23 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         await ctx.add_init_script(stealth)
         # تعامل مع الـpopunder: موقع smartlink بيفتح العرض في تاب جديد —
         # نستنى العرض يحمّل ونعمل سكرول خفيف عشان الظهور يتحسب والزيارة تبان حقيقية.
+        _popup_state = {'handled': False}
         async def _on_popup(popup):
+            # نتعامل مع أول popunder فقط، ونقفل الزيادة (بعض المواقع بترمي كذا تاب = تخنق الرنر)
+            if _popup_state['handled']:
+                try: await popup.close()
+                except Exception: pass
+                return
+            _popup_state['handled'] = True
             try:
-                await popup.wait_for_load_state('domcontentloaded', timeout=15000)
+                await popup.wait_for_load_state('domcontentloaded', timeout=8000)
                 with _lock:
                     _stats['popunder'] = _stats.get('popunder', 0) + 1
-                await asyncio.sleep(random.uniform(1.5, 3.5))
-                for _ in range(random.randint(1, 3)):
-                    try:
-                        await popup.evaluate("window.scrollBy(0, %d)" % random.randint(180, 520))
-                    except Exception:
-                        break
-                    await asyncio.sleep(random.uniform(0.8, 2.2))
+                await asyncio.sleep(random.uniform(1.0, 2.2))
+                try:
+                    await popup.evaluate("window.scrollBy(0, %d)" % random.randint(180, 460))
+                except Exception:
+                    pass
             except Exception:
                 pass
         ctx.on('page', lambda p: asyncio.create_task(_on_popup(p)))
@@ -975,11 +980,11 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             except Exception:
                 # الصفحة اتنقّلت (redirect للعرض/smartlink)؟ نلحقها ونكمّل التصفّح عليها بدل ما نخرج
                 nav_recover += 1
-                if nav_recover > 5:
+                if nav_recover > 3:
                     break
                 try:
-                    await page.wait_for_load_state('domcontentloaded', timeout=9000)
-                    await asyncio.sleep(random.uniform(0.6, 1.8))
+                    await page.wait_for_load_state('domcontentloaded', timeout=6000)
+                    await asyncio.sleep(random.uniform(0.6, 1.5))
                     vw = await page.evaluate('window.innerWidth')
                     vh = await page.evaluate('window.innerHeight')
                     add_log(f'  ↪ {sid:04d} تابع التحويل — بيتصفّح صفحة العرض')
@@ -1068,7 +1073,7 @@ def _cpu_count():
     except Exception:
         return 4
 
-HARD_CAP = 25   # سقف صارم لكل رنر — يمنع الجموح مهما حصل
+HARD_CAP = 16   # سقف صارم لكل رنر — أقل لأن الـpopunder بيضاعف تكلفة الجلسة (صفحتين)
 
 async def _autoscaler(max_target):
     """يعدّل _autoscale['target'] — الأولوية لبقاء الرنر حيًّا مش عصر آخر متصفح."""
@@ -1090,7 +1095,9 @@ async def _autoscaler(max_target):
         tgt = _autoscale['target']
         # باك-أوف مبكر للحفاظ على استجابة الرنر (وكيل GitHub لازم يفضل يرد وإلا يعتبره ميت)
         # نراقب الـload مش الـCPU بس — الـload بيمسك ازدحام الطابور وانتظار I/O
-        if cpu > 82 or load > cores * 2.2 or mem < 700 or errp > 20:
+        if load > cores * 3.5 or mem < 400:
+            new = max(2, tgt // 2)          # فرملة طوارئ — الرنر بيختنق
+        elif cpu > 82 or load > cores * 2.2 or mem < 700 or errp > 20:
             new = max(2, tgt - 2)
         # مساحة آمنة → زوّد متصفح واحد بحذر
         elif cpu < 68 and load < cores * 1.5 and mem > 1000 and errp < 8:
