@@ -573,43 +573,82 @@ async def _get_clickables(page):
             pass
     return vis
 
-AD_CLICK_RATE = 0.08   # 8% من الجلسات تضغط على إعلان واحد
+AD_CLICK_RATE = 0.02   # 2% من الجلسات تضغط إعلان (CTR واقعي — أعلى من كده = احتيال نقرات)
 
-async def _try_click_ad(page):
-    """يبحث عن إعلان مرئي ويضغط عليه بشكل إنساني — يُستدعى مرة واحدة فقط"""
-    AD_SELECTORS = [
-        'iframe[src*="ad"]', 'iframe[src*="banner"]', 'iframe[src*="pop"]',
-        'ins.adsbygoogle', '[id*="ad-container"]', '[id*="banner"]',
-        '[class*="ad-wrap"]', '[class*="advertisement"]', '[class*="sponsored"]',
-        'a[href*="adsterra"]', 'a[href*="aff"]', 'iframe',
-    ]
-    tried = set()
+# محدّدات الإعلانات — شبكات + iframes + روابط مباشرة (سمارت-لينك)
+AD_SELECTORS = [
+    'iframe[src*="ads"]', 'iframe[src*="/ad"]', 'iframe[src*="banner"]', 'iframe[src*="pop"]',
+    'iframe[src*="doubleclick"]', 'iframe[src*="googlesyndication"]', 'iframe[src*="adservice"]',
+    'iframe[src*="adnxs"]', 'iframe[src*="amazon-adsystem"]', 'iframe[src*="/afu"]',
+    'iframe[id*="google_ads"]', 'iframe[id*="aswift"]', 'iframe[id*="ad"]',
+    'iframe[aria-label*="Advertisement"]', 'iframe[title*="Advertisement"]',
+    'ins.adsbygoogle', '[id*="ad-container"]', '[id*="ad_container"]', '[id*="ad-slot"]',
+    '[id*="banner"]', '[class*="ad-wrap"]', '[class*="ad-slot"]', '[class*="ad-unit"]',
+    '[class*="advertisement"]', '[class*="sponsored"]', '[data-ad]', '[data-ad-slot]',
+    'a[href*="adsterra"]', 'a[href*="propeller"]', 'a[href*="aff"]', 'a[href*="/smartlink"]',
+    'a[href*="/redirect"]', 'a[href*="/click"]', 'a[target="_blank"][href^="http"]', 'iframe',
+]
+
+async def _find_ad(page):
+    """يرجّع أول إعلان مرئي مناسب (element, box) أو None."""
     for sel in AD_SELECTORS:
-        els = await page.query_selector_all(sel)
-        for el in els[:4]:
+        try:
+            els = await page.query_selector_all(sel)
+        except Exception:
+            continue
+        for el in els[:6]:
             try:
                 if not await el.is_visible():
                     continue
                 b = await el.bounding_box()
-                if not b or b['width'] < 40 or b['height'] < 20:
+                if not b or b['width'] < 30 or b['height'] < 20:
                     continue
-                key = (round(b['x']), round(b['y']))
-                if key in tried:
+                if b['width'] > 1200 and b['height'] > 1500:   # عنصر ضخم = مش إعلان غالباً
                     continue
-                tried.add(key)
-                await page.evaluate(f"window.scrollTo({{top: {max(0, b['y']-120)}, behavior:'smooth'}})")
-                await asyncio.sleep(random.uniform(0.8, 2.0))
-                x = b['x'] + b['width']  * random.uniform(0.25, 0.75)
-                y = b['y'] + b['height'] * random.uniform(0.25, 0.75)
-                await _human_move(page, x, y)
-                await asyncio.sleep(random.uniform(0.3, 0.9))
-                await page.mouse.down()
-                await asyncio.sleep(random.uniform(0.06, 0.16))
-                await page.mouse.up()
-                await asyncio.sleep(random.uniform(1.5, 4.0))
+                return el, b
+            except Exception:
+                pass
+    return None
+
+async def _click_box(page, b):
+    """ضغطة إنسانية على صندوق العنصر."""
+    await page.evaluate("window.scrollTo({top: %d, behavior:'smooth'})" % max(0, int(b['y'] - 140)))
+    await asyncio.sleep(random.uniform(0.8, 2.0))
+    try:
+        b2 = b  # بعد السكرول الإحداثيات النسبية للـviewport تقريبية
+    except Exception:
+        b2 = b
+    x = b2['x'] + b2['width']  * random.uniform(0.3, 0.7)
+    y = b2['y'] + b2['height'] * random.uniform(0.3, 0.7)
+    # نضبط y داخل الـviewport بعد السكرول
+    try:
+        vh = await page.evaluate('window.innerHeight')
+        if y > vh: y = vh * random.uniform(0.4, 0.7)
+    except Exception:
+        pass
+    await _human_move(page, x, max(10, y))
+    await asyncio.sleep(random.uniform(0.3, 0.9))
+    await page.mouse.down()
+    await asyncio.sleep(random.uniform(0.06, 0.16))
+    await page.mouse.up()
+    await asyncio.sleep(random.uniform(1.5, 4.0))
+
+async def _try_click_ad(page):
+    """يدوّر على إعلان — بيسكرول ويعيد المحاولة عشان الإعلانات اللي بتحمّل متأخر."""
+    for attempt in range(3):
+        hit = await _find_ad(page)
+        if hit:
+            try:
+                await _click_box(page, hit[1])
                 return True
             except Exception:
                 pass
+        # مفيش إعلان لسه؟ اسكرول شوية عشان الإعلانات الكسولة تظهر، وجرّب تاني
+        try:
+            await _human_scroll(page, random.randint(250, 550))
+        except Exception:
+            pass
+        await asyncio.sleep(random.uniform(0.8, 1.8))
     return False
 
 # ===== Browser session =====
@@ -838,18 +877,20 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         # ضغط عشوائي على إعلان في جزء صغير من الجلسات
         do_ad_click = random.random() < AD_CLICK_RATE
         ad_clicked  = False
+        _next_ad_try = 5.0   # أول محاولة بعد 5 ثوانٍ، وبعدها يعيد كل ~6 ثوانٍ
 
         while (time.time() - t_start) < duration and not _state['stop']:
             try:
-                # ضغط على إعلان مرة واحدة بعد 8 ثوانٍ من التصفح
-                if do_ad_click and not ad_clicked and (time.time() - t_start) > 8:
+                # الجلسات المختارة (2%) لازم تضغط إعلان أكيد — تعيد المحاولة وتسكرول لحد ما تنجح
+                el = time.time() - t_start
+                if do_ad_click and not ad_clicked and el > _next_ad_try:
                     ad_clicked = await _try_click_ad(page)
                     if ad_clicked:
-                        add_log(f'  → ad♦ {sid:04d}')
+                        add_log(f'  → ad♦ {sid:04d} (ضغط إعلان)')
                         await asyncio.sleep(random.uniform(2.0, 5.0))
                         break  # الصفحة ربما تنقّلت — أنهِ الجلسة بأمان
                     else:
-                        do_ad_click = False  # لم يجد إعلاناً، لا تحاول مجدداً
+                        _next_ad_try = el + 6.0   # مالقاش دلوقتي — يعيد المحاولة بعد شوية (مش يستسلم)
 
                 action = random.choice(ACTIONS)
 
