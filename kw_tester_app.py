@@ -42,8 +42,15 @@ _lock = threading.Lock()
 
 # دومينات تعني إن الـ Smartlink ميت/موقوف (صفحة Adsterra الاحتياطية) —
 # الهبوط عليها = زيارة مش هتتحسب، فنوقف بدل ما نحرق بروكسي على الفاضي
-DEAD_HOSTS = ('adzilla.meme',)
+DEAD_HOSTS = ('adzilla.meme', 'sedoparking.com', 'parkingcrew.net', 'bodis.com',
+              'above.com', 'dnsrsearch.com', 'voodoo.com', 'uniregistry.com',
+              'hugedomains.com', 'dan.com', 'afternic.com', 'sedo.com')
 DEAD_LIMIT = 5   # عدد الهبوط الميت المتتالي قبل الإيقاف التلقائي
+
+# علامات صفحة parked/معروضة للبيع — كشف بالمحتوى مش بالنطاق بس
+PARKED_MARKERS = ('this domain is for sale', 'buy this domain', 'the domain has expired',
+                  'domain is parked', 'this webpage is parked', 'parked free of charge',
+                  'domain for sale', 'الدومين معروض للبيع')
 
 class DeadLink(Exception):
     """الرابط هبط على صفحة احتياطية ميتة بدل عرض حقيقي."""
@@ -58,6 +65,17 @@ def _host_of(u):
 
 def _is_dead_host(host):
     return any(host == d or host.endswith('.' + d) for d in DEAD_HOSTS)
+
+async def _looks_parked(page):
+    """كشف صفحة معروضة للبيع/parked من عنوان الصفحة أو أول جزء من نصّها."""
+    try:
+        title = (await page.title() or '').lower()
+        if any(m in title for m in PARKED_MARKERS):
+            return True
+        txt = (await page.evaluate("document.body ? document.body.innerText.slice(0,1500) : ''") or '').lower()
+        return any(m in txt for m in PARKED_MARKERS)
+    except Exception:
+        return False
 
 def parse_proxy(raw):
     if not raw:
@@ -170,9 +188,20 @@ TRAFFIC_SOURCES = TRAFFIC_SOURCES_EN
 UTM_CONTENTS = ['feed','story','reel','post','link','bio','ad']
 
 # fbclid: معرّف نقرة فيسبوك — يُضاف على كل زيارة عشان تبان طبيعية جاية من الفيس
-_FBCLID_CHARS = string.ascii_letters + string.digits + '-_'
+_FBCLID_CHARS    = string.ascii_letters + string.digits + '-_'
+_FBCLID_PREFIXES = ['IwY2xjaw', 'IwZXh0bgNhZW0', 'IwAR1']   # صيغ حديثة + قديمة
 def _fbclid():
-    return 'IwAR' + ''.join(random.choice(_FBCLID_CHARS) for _ in range(36))
+    pre = random.choice(_FBCLID_PREFIXES)
+    return pre + ''.join(random.choice(_FBCLID_CHARS) for _ in range(random.randint(40, 58)))
+
+# UA تطبيق فيسبوك/ماسنجر الداخلي (أندرويد فقط — الـ webview كروم بيضيف التوكن ده)
+_FB_AND_VERS = ['449.0.0.35.108', '452.0.0.41.109', '455.0.0.49.60', '458.0.0.36.109']
+def _fb_app_ua(base_ua, is_messenger=False):
+    v   = random.choice(_FB_AND_VERS)
+    app = 'Orca-Android' if is_messenger else 'FB4A'
+    return base_ua + f' [FB_IAB/{app};FBAV/{v};IABMV/1]'
+
+PROXY_RETRIES = 2   # محاولات فتح إضافية ببروكسي تالي عند الفشل (بدون شطب أي بروكسي)
 
 def _build_url(base_url, traffic_mix, locale='en'):
     """يبني الزيارة كأنها جاية من فيسبوك (إعلان/منشور/رسالة) مع fbclid وUTM"""
@@ -379,7 +408,7 @@ async def _try_click_ad(page):
     return False
 
 # ===== Browser session =====
-async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix=True, goto_timeout=90000):
+async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix=True, goto_timeout=90000, pick_proxy=None):
     if jitter > 0:
         await asyncio.sleep(random.uniform(0, jitter))
     duration = random.uniform(duration * 0.7, duration * 1.45)
@@ -401,62 +430,92 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
 
     final_url, ref = _build_url(url, traffic_mix, locale)
 
-    launch = {
-        'headless': True,
-        'executable_path': CHROMIUM_BIN,
-        'args': ['--no-sandbox','--disable-setuid-sandbox',
-                 '--disable-blink-features=AutomationControlled',
-                 '--disable-dev-shm-usage','--disable-gpu','--no-zygote',
-                 '--disable-webrtc',
-                 f'--window-size={dev["vw"]},{dev["vh"]}'],
+    # UA تطبيق فيسبوك الداخلي (أندرويد): الزيارة تبان إنها اتفتحت جوه تطبيق فيسبوك/ماسنجر
+    ua = dev['ua']
+    is_android = 'iphone' not in dev.get('platform', '').lower()
+    if ref and is_android and ('facebook.com' in ref or 'messenger' in ref) and random.random() < 0.8:
+        ua = _fb_app_ua(ua, 'messenger' in ref)
+
+    def _launch_opts(pstr):
+        opts = {
+            'headless': True,
+            'executable_path': CHROMIUM_BIN,
+            'args': ['--no-sandbox','--disable-setuid-sandbox',
+                     '--disable-blink-features=AutomationControlled',
+                     '--disable-dev-shm-usage','--disable-gpu','--no-zygote',
+                     '--disable-webrtc',
+                     f'--window-size={dev["vw"]},{dev["vh"]}'],
+        }
+        pc = parse_proxy(pstr)
+        if pc:
+            opts['proxy'] = pc
+        return opts
+
+    hdrs = {
+        'Accept-Language': f'{locale},{locale[:2]};q=0.9,en;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Upgrade-Insecure-Requests': '1',
     }
-    proxy_cfg = parse_proxy(proxy)
-    if proxy_cfg:
-        launch['proxy'] = proxy_cfg
+    if ref:
+        hdrs['Referer'] = ref
+    if dev.get('engine') == 'chrome' and dev.get('ch_ua'):
+        hdrs['Sec-CH-UA'] = dev['ch_ua']
+        hdrs['Sec-CH-UA-Mobile'] = '?1'
+        hdrs['Sec-CH-UA-Platform'] = '"Android"' if 'Linux' in dev.get('platform','') else '"iOS"'
+
+    stealth = (STEALTH_JS
+               .replace('__LOCALE__', locale)
+               .replace('__LOCALE2__', locale[:2])
+               .replace('__PLATFORM__', dev.get('platform', 'Linux aarch64'))
+               .replace('__VENDOR__', dev.get('vendor', 'Google Inc.'))
+               .replace('__ENGINE__', dev.get('engine', 'chrome')))
 
     browser = None
     t_start = time.time()
     nav_ms  = 0
 
-    try:
-        with _lock:
-            _stats['active'] += 1
-            _stats['devices'][dev['name']] = _stats['devices'].get(dev['name'], 0) + 1
-
-        browser = await playwright.chromium.launch(**launch)
-        hdrs = {
-            'Accept-Language': f'{locale},{locale[:2]};q=0.9,en;q=0.7',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Upgrade-Insecure-Requests': '1',
-        }
-        if ref:
-            hdrs['Referer'] = ref
-        if dev.get('engine') == 'chrome' and dev.get('ch_ua'):
-            hdrs['Sec-CH-UA'] = dev['ch_ua']
-            hdrs['Sec-CH-UA-Mobile'] = '?1'
-            hdrs['Sec-CH-UA-Platform'] = '"Android"' if 'Linux' in dev.get('platform','') else '"iOS"'
-
-        context = await browser.new_context(
-            user_agent=dev['ua'],
+    async def _open(pstr):
+        b   = await playwright.chromium.launch(**_launch_opts(pstr))
+        ctx = await b.new_context(
+            user_agent=ua,
             viewport={'width':dev['vw'],'height':dev['vh']},
             device_scale_factor=dev['dpr'],
             is_mobile=True, has_touch=True,
             locale=locale, timezone_id=tz,
             extra_http_headers=hdrs,
         )
-        stealth = (STEALTH_JS
-                   .replace('__LOCALE__', locale)
-                   .replace('__LOCALE2__', locale[:2])
-                   .replace('__PLATFORM__', dev.get('platform', 'Linux aarch64'))
-                   .replace('__VENDOR__', dev.get('vendor', 'Google Inc.'))
-                   .replace('__ENGINE__', dev.get('engine', 'chrome')))
-        await context.add_init_script(stealth)
-        page = await context.new_page()
-
+        await ctx.add_init_script(stealth)
+        pg = await ctx.new_page()
         t_nav = time.time()
-        resp  = await page.goto(final_url, wait_until='domcontentloaded', timeout=goto_timeout)
-        nav_ms = int((time.time() - t_nav) * 1000)
+        r = await pg.goto(final_url, wait_until='domcontentloaded', timeout=goto_timeout)
+        return b, pg, r, int((time.time() - t_nav) * 1000)
+
+    try:
+        with _lock:
+            _stats['active'] += 1
+            _stats['devices'][dev['name']] = _stats['devices'].get(dev['name'], 0) + 1
+
+        # فتح مع إعادة محاولة على بروكسي تالي — البروكسيات بتغيّر IP كل دقيقة،
+        # فالفشل مؤقت: نجرّب واحد تاني من غير ما نشطب أي بروكسي من البول.
+        attempts = [proxy]
+        if pick_proxy:
+            attempts += [pick_proxy() for _ in range(PROXY_RETRIES)]
+        page = resp = None
+        last_err = None
+        for pstr in attempts:
+            try:
+                browser, page, resp, nav_ms = await _open(pstr)
+                break
+            except Exception as e:
+                last_err = e
+                if browser:
+                    try: await browser.close()
+                    except: pass
+                    browser = None
+                continue
+        if page is None:
+            raise last_err or Exception('proxy open failed')
 
         if resp:
             code = str(resp.status)
@@ -478,6 +537,8 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             landed = ''
         if _is_dead_host(landed):
             raise DeadLink(landed)
+        if await _looks_parked(page):
+            raise DeadLink(landed or 'parked')
 
         # === حلقة الأفعال البشرية ===
         # الأوزان: تمرير لأسفل أكثر شيء، ثم ضغط، ثم حركة موس، ثم توقف قراءة، ثم hover، ثم تمرير لأعلى
@@ -606,6 +667,8 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
     _pool = [p.strip() for p in (proxy or '').replace('\r', '').split('\n') if p.strip()]
     def _pick(i):
         return _pool[(i - 1) % len(_pool)] if _pool else None
+    # مزوّد بروكسي عشوائي لإعادة المحاولة (كل البروكسيات متكافئة وبتغيّر IP كل دقيقة)
+    _rand_proxy = (lambda: random.choice(_pool)) if _pool else (lambda: None)
 
     async with async_playwright() as pw:
 
@@ -613,7 +676,7 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
         # لو هبطت على صفحة ميتة (adzilla) نوقف فوراً من غير ما نشغّل الأسطول.
         add_log('🔎 فحص مبدئي للرابط…')
         await run_session(pw, url, _pick(1), min(duration, 8), 0, 0,
-                          traffic_mix, goto_timeout)
+                          traffic_mix, goto_timeout, pick_proxy=_rand_proxy)
         if _state['stop'] or _stats.get('dead', 0) > 0:
             _state['stop'] = True
             add_log('⛔ توقف: الرابط بيحوّل لصفحة ميتة — لم يُستهلك بروكسي على الفاضي. جدّد الـ Smartlink.')
@@ -636,7 +699,7 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
             async with sem:
                 if _state['stop']:
                     return
-                await run_session(pw, url, _pick(i), duration, i, jitter, traffic_mix, goto_timeout)
+                await run_session(pw, url, _pick(i), duration, i, jitter, traffic_mix, goto_timeout, pick_proxy=_rand_proxy)
 
         await asyncio.gather(*[bounded(i) for i in range(1, count+1)])
 
