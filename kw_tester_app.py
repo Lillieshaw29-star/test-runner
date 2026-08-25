@@ -95,6 +95,31 @@ class DeadLink(Exception):
     """الرابط هبط على صفحة احتياطية ميتة بدل عرض حقيقي."""
     pass
 
+class NoProxy(Exception):
+    """حماية تسريب الآي بي: مفيش بروكسي صالح للجلسة — تُلغى قبل فتح المتصفح."""
+    pass
+
+def _probe_proxy(pstr, timeout=12):
+    """يتأكد إن البروكسي حي فعليًا (مش معلّق) عبر طلب HTTP سريع. True=حي."""
+    cfg = parse_proxy(pstr)
+    if not cfg:
+        return False
+    try:
+        import urllib.request
+        server = cfg['server']
+        user   = cfg.get('username', '')
+        pw     = cfg.get('password', '')
+        purl   = server.replace('://', '://%s:%s@' % (user, pw)) if user else server
+        h = urllib.request.HTTPHandler()
+        proxy_h = urllib.request.ProxyHandler({'http': purl, 'https': purl})
+        opener = urllib.request.build_opener(proxy_h)
+        req = urllib.request.Request('https://ipinfo.io/ip',
+                                     headers={'User-Agent': 'curl/8'})
+        with opener.open(req, timeout=timeout) as r:
+            return r.status == 200 and bool(r.read(4))
+    except Exception:
+        return False
+
 def _host_of(u):
     try:
         from urllib.parse import urlparse
@@ -512,7 +537,7 @@ async def _try_click_ad(page):
     return False
 
 # ===== Browser session =====
-async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix=True, goto_timeout=90000, pick_proxy=None):
+async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix=True, goto_timeout=90000, pick_proxy=None, require_proxy=False):
     if jitter > 0:
         await asyncio.sleep(random.uniform(0, jitter))
 
@@ -598,6 +623,9 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
     nav_ms  = 0
 
     async def _open(pstr):
+        # حماية تسريب الآي بي: لو البروكسي مطلوب ومفيش بروكسي صالح، ما نفتحش المتصفح خالص
+        if require_proxy and not parse_proxy(pstr):
+            raise NoProxy('blocked: no valid proxy (IP-leak guard)')
         b   = await playwright.chromium.launch(**_launch_opts(pstr))
         ctx_opts = dict(
             user_agent=ua,
@@ -780,6 +808,11 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         add_log(f'⚠ {sid:04d} DEAD → {dl} (الرابط ميت/موقوف — مش بيتحسب)')
         if hit >= DEAD_LIMIT:
             add_log(f'⛔ إيقاف تلقائي: {hit} هبوط ميت متتالي — وفّرنا البروكسي')
+    except NoProxy:
+        with _lock:
+            _stats['err'] += 1
+            _stats['noproxy'] = _stats.get('noproxy', 0) + 1
+        add_log(f'🛡 {sid:04d} مُلغاة — مفيش بروكسي (حماية تسريب الآي بي)')
     except Exception as e:
         with _lock:
             _stats['err'] += 1
@@ -863,14 +896,28 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
         return _pool[(i - 1) % len(_pool)] if _pool else None
     # مزوّد بروكسي عشوائي لإعادة المحاولة (كل البروكسيات متكافئة وبتغيّر IP كل دقيقة)
     _rand_proxy = (lambda: random.choice(_pool)) if _pool else (lambda: None)
+    # حماية تسريب الآي بي: لو في بول بروكسي، كل جلسة لازم يكون ليها بروكسي (وإلا تُلغى)
+    require_proxy = len(_pool) > 0
 
     async with async_playwright() as pw:
 
         # === فحص مبدئي: جلسة واحدة تتأكد إن الرابط حي قبل ما نصرف بروكسي ===
         # لو هبطت على صفحة ميتة (adzilla) نوقف فوراً من غير ما نشغّل الأسطول.
         add_log('🔎 فحص مبدئي للرابط…')
+        # حماية بروكسي: قبل ما نصرف أي حاجة، نتأكد في بروكسي حي فعليًا
+        if require_proxy:
+            import asyncio as _a
+            alive = await _a.get_event_loop().run_in_executor(None, _probe_proxy, _pick(1))
+            if not alive:
+                alive = await _a.get_event_loop().run_in_executor(None, _probe_proxy, _rand_proxy())
+            if not alive:
+                add_log('🛑 توقف: البروكسي واقف/منتهي — مفيش بروكسي حي. الحملة اتوقفت لحماية آي بي السيرفر.')
+                _pause_campaign('proxy_down')
+                _state['running'] = False
+                return
         await run_session(pw, url, _pick(1), min(duration, 8), 0, 0,
-                          traffic_mix, goto_timeout, pick_proxy=_rand_proxy)
+                          traffic_mix, goto_timeout, pick_proxy=_rand_proxy,
+                          require_proxy=require_proxy)
         if _state['stop'] or _stats.get('dead', 0) > 0:
             _state['stop'] = True
             add_log('⛔ توقف: الرابط بيحوّل لصفحة ميتة — لم يُستهلك بروكسي على الفاضي. جدّد الـ Smartlink.')
@@ -889,6 +936,27 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
 
         # يشغّل الـautoscaler بالتوازي مع مطلِق الجلسات
         scaler = asyncio.create_task(_autoscaler(max_target))
+
+        # حارس البروكسي: كل 60ث يتأكد في بروكسي حي فعليًا؛ 3 فشل متتالي → يوقف الحملة
+        async def _proxy_guard():
+            if not _pool:
+                return
+            loop  = asyncio.get_event_loop()
+            fails = 0
+            while _state.get('running') and not _state['stop']:
+                await asyncio.sleep(60)
+                ok = await loop.run_in_executor(None, _probe_proxy, random.choice(_pool))
+                if ok:
+                    fails = 0
+                else:
+                    fails += 1
+                    add_log(f'⚠️ فحص البروكسي فشل ({fails}/3)')
+                    if fails >= 3:
+                        _state['stop'] = True
+                        add_log('🛑 إيقاف تلقائي: البروكسي واقف/منتهي (3 فحوصات فشلت) — حماية آي بي السيرفر')
+                        _pause_campaign('proxy_down')
+                        break
+        guard = asyncio.create_task(_proxy_guard())
 
         SPAWN_GAP = 0.6          # فجوة القيام بين متصفح والتالي (قيام تدريجي، مش دفعة)
         inflight  = set()
@@ -909,7 +977,8 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
                     launched += 1
                     t = asyncio.create_task(
                         run_session(pw, url, _pick(launched), duration, launched, 0,
-                                    traffic_mix, goto_timeout, pick_proxy=_rand_proxy))
+                                    traffic_mix, goto_timeout, pick_proxy=_rand_proxy,
+                                    require_proxy=require_proxy))
                     inflight.add(t)
                     t.add_done_callback(inflight.discard)
                     # تباعد وقت الهدوء (#3) مضروب في فجوة القيام
@@ -922,6 +991,7 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
             if inflight:
                 await asyncio.gather(*list(inflight), return_exceptions=True)
             scaler.cancel()
+            guard.cancel()
 
     _state['running'] = False
 
