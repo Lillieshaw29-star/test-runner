@@ -199,21 +199,90 @@ def _pause_campaign(reason=''):
         save_campaign(c)
 
 # ===== Devices & constants =====
+def _iph(ua, vw, vh, ver, model, dpr=3.0, name=''):
+    return {'ua':ua,'vw':vw,'vh':vh,'dpr':dpr,'name':name,'platform':'iPhone',
+            'vendor':'Apple Computer, Inc.','engine':'safari','is_ios':True,
+            'ios_ver':ver,'ios_model':model,'cores':6,'mem':None,
+            'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'}
+
+def _saf(v):  # Safari iOS UA
+    return ('Mozilla/5.0 (iPhone; CPU iPhone OS %s like Mac OS X) AppleWebKit/605.1.15 '
+            '(KHTML, like Gecko) Version/%s Mobile/15E148 Safari/604.1'
+            % (v.replace('.', '_'), v))
+
+def _and(model, chrome, vw, vh, gpu_v, gpu_r, name, dpr=3.0, mem=8, av='14'):
+    major = chrome.split('.')[0]
+    return {'ua':('Mozilla/5.0 (Linux; Android %s; %s) AppleWebKit/537.36 (KHTML, like Gecko) '
+                  'Chrome/%s Mobile Safari/537.36' % (av, model, chrome)),
+            'vw':vw,'vh':vh,'dpr':dpr,'name':name,'platform':'Linux aarch64',
+            'vendor':'Google Inc.','engine':'chrome',
+            'ch_ua':'"Chromium";v="%s", "Google Chrome";v="%s", "Not-A.Brand";v="99"' % (major, major),
+            'is_ios':False,'cores':8,'mem':mem,'webgl_vendor':gpu_v,'webgl_renderer':gpu_r}
+
+# نسخ كروم كاملة حديثة
+_C135, _C134, _C133, _C132, _C131 = ('135.0.7049.83','134.0.6998.135','133.0.6943.137','132.0.6834.163','131.0.6778.104')
+
 DEVICES = [
-    # iPhones — is_ios=True, no deviceMemory/connection/chrome on iOS, Apple GPU
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1','vw':390,'vh':844,'dpr':3.0,'name':'iPhone 15','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari','is_ios':True,'ios_ver':'18.3','ios_model':'iPhone15,2','cores':6,'mem':None,'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'},
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1','vw':375,'vh':812,'dpr':2.0,'name':'iPhone 12','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari','is_ios':True,'ios_ver':'18.1','ios_model':'iPhone13,2','cores':6,'mem':None,'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'},
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1','vw':430,'vh':932,'dpr':3.0,'name':'iPhone 15 Pro Max','platform':'iPhone','vendor':'Apple Computer, Inc.','engine':'safari','is_ios':True,'ios_ver':'18.3','ios_model':'iPhone15,3','cores':6,'mem':None,'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'},
-    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/135.0.7049.83 Mobile/15E148 Safari/604.1','vw':390,'vh':844,'dpr':3.0,'name':'iPhone 15 Chrome','platform':'iPhone','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"','is_ios':True,'ios_ver':'17.6','ios_model':'iPhone15,2','cores':6,'mem':None,'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'},
-    # Android — is_ios=False, Snapdragon/Exynos/Dimensity GPUs
-    {'ua':'Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':412,'vh':915,'dpr':3.5,'name':'Pixel 9 Pro','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'Qualcomm','webgl_renderer':'Adreno (TM) 750'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36','vw':360,'vh':780,'dpr':3.0,'name':'Samsung S24','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="134", "Google Chrome";v="134", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Mali-G715-Immortalis MC10'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; Redmi Note 13 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.137 Mobile Safari/537.36','vw':393,'vh':851,'dpr':2.75,'name':'Redmi Note 13','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="133", "Google Chrome";v="133", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Mali-G610 MC4'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-A556B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':360,'vh':800,'dpr':2.0,'name':'Samsung A55','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Xclipse 530'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; 23127PN0CC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.6834.163 Mobile Safari/537.36','vw':393,'vh':873,'dpr':2.75,'name':'Xiaomi 14T','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="132", "Google Chrome";v="132", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Mali-G615 MC6'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; CPH2609) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36','vw':412,'vh':892,'dpr':2.625,'name':'OPPO Reno12','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="134", "Google Chrome";v="134", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'ARM','webgl_renderer':'Mali-G615 MC2'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; SM-F956B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.83 Mobile Safari/537.36','vw':390,'vh':882,'dpr':2.0,'name':'Galaxy Z Fold6','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'Qualcomm','webgl_renderer':'Adreno (TM) 750'},
-    {'ua':'Mozilla/5.0 (Linux; Android 14; V2309) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.137 Mobile Safari/537.36','vw':392,'vh':848,'dpr':3.0,'name':'Vivo V30','platform':'Linux aarch64','vendor':'Google Inc.','engine':'chrome','ch_ua':'"Chromium";v="133", "Google Chrome";v="133", "Not-A.Brand";v="99"','is_ios':False,'cores':8,'mem':8,'webgl_vendor':'Qualcomm','webgl_renderer':'Adreno (TM) 720'},
+    # ===== iPhones (Safari, Apple GPU, 6 cores) =====
+    _iph(_saf('18.3'), 393, 852, '18.3', 'iPhone17,3', name='iPhone 16'),
+    _iph(_saf('18.3'), 402, 874, '18.3', 'iPhone17,1', name='iPhone 16 Pro'),
+    _iph(_saf('18.1'), 440, 956, '18.1', 'iPhone17,2', name='iPhone 16 Pro Max'),
+    _iph(_saf('18.3'), 393, 852, '18.3', 'iPhone16,1', name='iPhone 15 Pro'),
+    _iph(_saf('18.2'), 430, 932, '18.2', 'iPhone16,2', name='iPhone 15 Pro Max'),
+    _iph(_saf('18.1'), 393, 852, '18.1', 'iPhone15,4', name='iPhone 15'),
+    _iph(_saf('18.0'), 430, 932, '18.0', 'iPhone15,5', name='iPhone 15 Plus'),
+    _iph(_saf('17.7'), 393, 852, '17.7', 'iPhone15,2', name='iPhone 14 Pro'),
+    _iph(_saf('18.2'), 430, 932, '18.2', 'iPhone15,3', name='iPhone 14 Pro Max'),
+    _iph(_saf('17.6'), 390, 844, '17.6', 'iPhone14,7', name='iPhone 14'),
+    _iph(_saf('18.1'), 428, 926, '18.1', 'iPhone14,8', name='iPhone 14 Plus'),
+    _iph(_saf('17.7'), 390, 844, '17.7', 'iPhone14,2', name='iPhone 13 Pro'),
+    _iph(_saf('18.0'), 390, 844, '18.0', 'iPhone14,5', name='iPhone 13'),
+    _iph(_saf('17.6'), 375, 812, '17.6', 'iPhone14,4', name='iPhone 13 mini'),
+    _iph(_saf('18.1'), 390, 844, '18.1', 'iPhone13,2', name='iPhone 12'),
+    _iph(_saf('17.5'), 375, 667, '17.5', 'iPhone14,6', dpr=2.0, name='iPhone SE 3'),
+    # iPhone عبر كروم iOS (CriOS) — لسه Apple GPU، من غير userAgentData
+    {'ua':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/%s Mobile/15E148 Safari/604.1' % _C135,
+     'vw':393,'vh':852,'dpr':3.0,'name':'iPhone 15 (Chrome)','platform':'iPhone','vendor':'Google Inc.','engine':'chrome',
+     'ch_ua':'"Chromium";v="135", "Google Chrome";v="135", "Not-A.Brand";v="99"','is_ios':True,'ios_ver':'18.1','ios_model':'iPhone15,4','cores':6,'mem':None,'webgl_vendor':'Apple','webgl_renderer':'Apple GPU'},
+
+    # ===== Samsung =====
+    _and('SM-S928B', _C135, 412, 915, 'Qualcomm', 'Adreno (TM) 750',        'Galaxy S24 Ultra', dpr=3.5, mem=8),
+    _and('SM-S921B', _C134, 360, 780, 'ARM',      'Xclipse 940',            'Galaxy S24',       dpr=3.0, mem=8),
+    _and('SM-S918B', _C133, 384, 824, 'Qualcomm', 'Adreno (TM) 740',        'Galaxy S23 Ultra', dpr=3.75, mem=8),
+    _and('SM-S911B', _C132, 360, 780, 'Qualcomm', 'Adreno (TM) 740',        'Galaxy S23',       dpr=3.0, mem=8),
+    _and('SM-F956B', _C135, 344, 882, 'Qualcomm', 'Adreno (TM) 750',        'Galaxy Z Fold6',   dpr=3.0, mem=8),
+    _and('SM-F741B', _C134, 412, 916, 'Qualcomm', 'Adreno (TM) 750',        'Galaxy Z Flip6',   dpr=2.625, mem=8),
+    _and('SM-A556B', _C135, 360, 800, 'ARM',      'Xclipse 530',            'Galaxy A55',       dpr=3.0, mem=8),
+    _and('SM-A546B', _C134, 360, 780, 'ARM',      'Mali-G68 MC4',           'Galaxy A54',       dpr=3.0, mem=8),
+    _and('SM-A356B', _C133, 360, 792, 'ARM',      'Mali-G68 MC4',           'Galaxy A35',       dpr=3.0, mem=6),
+    _and('SM-A155F', _C132, 360, 800, 'ARM',      'Mali-G57 MC2',           'Galaxy A15',       dpr=3.0, mem=4, av='14'),
+
+    # ===== Google Pixel (Tensor → Mali) =====
+    _and('Pixel 9 Pro', _C135, 412, 915, 'ARM', 'Mali-G715',                'Pixel 9 Pro', dpr=3.5, mem=8, av='15'),
+    _and('Pixel 9',     _C134, 412, 915, 'ARM', 'Mali-G715',                'Pixel 9',     dpr=2.625, mem=8, av='15'),
+    _and('Pixel 8 Pro', _C133, 412, 915, 'ARM', 'Mali-G715',                'Pixel 8 Pro', dpr=2.625, mem=8, av='14'),
+    _and('Pixel 8',     _C132, 412, 915, 'ARM', 'Mali-G715',                'Pixel 8',     dpr=2.625, mem=8, av='14'),
+    _and('Pixel 7',     _C131, 412, 915, 'ARM', 'Mali-G710',                'Pixel 7',     dpr=2.625, mem=8, av='14'),
+
+    # ===== Xiaomi / Redmi / POCO =====
+    _and('23127PN0CG', _C135, 393, 873, 'Qualcomm', 'Adreno (TM) 750',      'Xiaomi 14',        dpr=2.75, mem=8),
+    _and('24069PC21G', _C134, 393, 873, 'ARM',      'Mali-G615 MC6',        'Xiaomi 14T',       dpr=2.75, mem=8),
+    _and('2312DRA50G', _C133, 393, 873, 'Qualcomm', 'Adreno (TM) 710',      'Redmi Note 13 Pro',dpr=2.75, mem=8),
+    _and('23129RAA4G', _C132, 393, 873, 'Qualcomm', 'Adreno (TM) 613',      'Redmi Note 13',    dpr=2.75, mem=6),
+    _and('24069PC21I', _C134, 393, 873, 'ARM',      'Mali-G615 MC6',        'POCO X6 Pro',      dpr=2.75, mem=8),
+
+    # ===== OnePlus / OPPO / Realme / Vivo =====
+    _and('CPH2581', _C135, 412, 919, 'Qualcomm', 'Adreno (TM) 750',         'OnePlus 12',   dpr=3.5, mem=8),
+    _and('CPH2609', _C134, 412, 892, 'ARM',      'Mali-G615 MC2',           'OPPO Reno12',  dpr=2.625, mem=8),
+    _and('RMX3842', _C133, 393, 873, 'Qualcomm', 'Adreno (TM) 710',         'Realme 12 Pro',dpr=2.75, mem=8),
+    _and('V2318',   _C132, 392, 848, 'Qualcomm', 'Adreno (TM) 720',         'Vivo V30',     dpr=3.0, mem=8),
+    _and('V2247',   _C131, 360, 800, 'Qualcomm', 'Adreno (TM) 610',         'Vivo Y36',     dpr=3.0, mem=4, av='13'),
+
+    # ===== Motorola / أجهزة أسواق ناشئة =====
+    _and('motorola edge 50', _C134, 384, 854, 'Qualcomm', 'Adreno (TM) 720','Moto Edge 50', dpr=2.75, mem=8),
+    _and('XT2347-2', _C133, 393, 873, 'Qualcomm', 'Adreno (TM) 619',        'Moto G84',     dpr=2.75, mem=8),
+    _and('TECNO CK6n', _C132, 360, 800, 'ARM', 'Mali-G52 MC2',              'Tecno Camon 20', dpr=3.0, mem=8, av='13'),
+    _and('Infinix X6833B', _C131, 360, 800, 'ARM', 'Mali-G57 MC2',          'Infinix Note 30', dpr=3.0, mem=8, av='13'),
 ]
 
 # locale + timezone matched per proxy country
@@ -314,11 +383,12 @@ def _client_hints(dev):
 
 PROXY_RETRIES = 2   # محاولات فتح إضافية ببروكسي تالي عند الفشل (بدون شطب أي بروكسي)
 
-# === توفير بيانات البروكسي ===
-# نمنع أنواع الموارد التقيلة (صور/فيديو/صوت/خطوط) — بتوفّر ~70-90% من الداتا
-# من غير ما تأثّر على تسجيل الزيارة (الـHTML + تحليلات JS بيحمّلوا عادي).
+# === توفير بيانات البروكسي (وضع آمن للإعلانات) ===
+# نمنع الخطوط + الفيديو/الصوت بس — مش الصور ولا الـiframes.
+# كده الإعلانات (صور/iframes) بتظهر وتتعرض عادي → الظهور يتحسب والـviewability تعدّي،
+# والموقع بيشوفك بتشوف الإعلانات طبيعي. نوفّر الخطوط والميديا التقيلة اللي مالهاش لازمة.
 DATA_SAVER   = True
-_BLOCK_TYPES = ('image', 'media', 'font')
+_BLOCK_TYPES = ('font', 'media')
 
 def _build_url(base_url, traffic_mix, locale='en'):
     """يبني الزيارة كأنها جاية من فيسبوك (إعلان/منشور/رسالة) مع fbclid وUTM"""
