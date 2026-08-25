@@ -314,6 +314,12 @@ def _client_hints(dev):
 
 PROXY_RETRIES = 2   # محاولات فتح إضافية ببروكسي تالي عند الفشل (بدون شطب أي بروكسي)
 
+# === توفير بيانات البروكسي ===
+# نمنع أنواع الموارد التقيلة (صور/فيديو/صوت/خطوط) — بتوفّر ~70-90% من الداتا
+# من غير ما تأثّر على تسجيل الزيارة (الـHTML + تحليلات JS بيحمّلوا عادي).
+DATA_SAVER   = True
+_BLOCK_TYPES = ('image', 'media', 'font')
+
 def _build_url(base_url, traffic_mix, locale='en'):
     """يبني الزيارة كأنها جاية من فيسبوك (إعلان/منشور/رسالة) مع fbclid وUTM"""
     if not traffic_mix:
@@ -640,6 +646,22 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
         ctx = await b.new_context(**ctx_opts)
         await ctx.add_init_script(stealth)
         pg = await ctx.new_page()
+        # === وضع توفير البيانات: نمنع الصور/الفيديو/الخطوط (بتوفّر ~80% من الداتا) ===
+        # الـHTML والجافاسكريبت (التحليلات/بيكسل فيسبوك) بيحمّلوا عادي فالزيارة تتسجّل،
+        # والموقع بيشوف متصفح موبايل بوضع موفّر-بيانات (طبيعي تمامًا).
+        if DATA_SAVER:
+            async def _saver(route):
+                try:
+                    if route.request.resource_type in _BLOCK_TYPES:
+                        with _lock:
+                            _stats['blocked'] = _stats.get('blocked', 0) + 1
+                        await route.abort()
+                    else:
+                        await route.continue_()
+                except Exception:
+                    try: await route.continue_()
+                    except Exception: pass
+            await pg.route('**/*', _saver)
         t_nav = time.time()
         # referer جوه goto بيملّي document.referrer (مش الهيدر بس) — التحليلات تنسب الزيارة لفيسبوك (#1)
         r = await pg.goto(final_url, wait_until='domcontentloaded',
