@@ -1554,6 +1554,98 @@ def diag_goto():
         res = {'ok':False, 'err':'host: '+f'{type(e).__name__}: {str(e)[:90]}'}
     return jsonify(res)
 
+async def _start_connect_relay(upstream_proxy):
+    """يشغّل relay محلي (127.0.0.1) بيعمل HTTP CONNECT للـupstream (dataimpulse)
+       بمصادقة في بايثون — Chromium بيتصل بيه بدون مصادقة. بيرجّع (server, port)."""
+    import base64
+    pc = parse_proxy(upstream_proxy)
+    up_server = pc['server'].split('://', 1)[1]              # host:port
+    up_host, up_port = up_server.rsplit(':', 1); up_port = int(up_port)
+    auth_hdr = ''
+    if pc.get('username'):
+        raw = f"{pc['username']}:{pc.get('password','')}"
+        auth_hdr = 'Proxy-Authorization: Basic ' + base64.b64encode(raw.encode()).decode() + '\r\n'
+
+    async def _pipe(r, w):
+        try:
+            while True:
+                data = await r.read(65536)
+                if not data:
+                    break
+                w.write(data); await w.drain()
+        except Exception:
+            pass
+        try: w.close()
+        except Exception: pass
+
+    async def handle(creader, cwriter):
+        try:
+            head = await creader.readuntil(b'\r\n\r\n')
+            first = head.split(b'\r\n', 1)[0].decode('latin1')
+            parts = first.split(' ')
+            if len(parts) < 2 or parts[0].upper() != 'CONNECT':
+                cwriter.write(b'HTTP/1.1 405 Method Not Allowed\r\n\r\n'); await cwriter.drain()
+                cwriter.close(); return
+            target = parts[1]
+            ureader, uwriter = await asyncio.open_connection(up_host, up_port)
+            uwriter.write(f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n{auth_hdr}\r\n".encode())
+            await uwriter.drain()
+            resp = await ureader.readuntil(b'\r\n\r\n')
+            if b' 200' not in resp.split(b'\r\n', 1)[0]:
+                cwriter.write(b'HTTP/1.1 502 Bad Gateway\r\n\r\n'); await cwriter.drain()
+                cwriter.close(); return
+            cwriter.write(b'HTTP/1.1 200 Connection established\r\n\r\n'); await cwriter.drain()
+            await asyncio.gather(_pipe(creader, uwriter), _pipe(ureader, cwriter))
+        except Exception:
+            try: cwriter.close()
+            except Exception: pass
+
+    server = await asyncio.start_server(handle, '127.0.0.1', 0)
+    port = server.sockets[0].getsockname()[1]
+    return server, port
+
+@app.route('/diag_relay', methods=['POST'])
+def diag_relay():
+    """تشخيص: Chromium عبر relay محلي بدون مصادقة يوصّل لـupstream dataimpulse.
+       بيختبر لو المشكلة في اتصال Chromium المباشر بالبروكسي (client-based block)."""
+    import asyncio
+    d      = request.json or {}
+    proxy  = (d.get('proxy') or '').strip()
+    url    = (d.get('url') or 'https://ipinfo.io/json').strip()
+    async def _run():
+        from playwright.async_api import async_playwright
+        server, rport = await _start_connect_relay(proxy)
+        try:
+            async with async_playwright() as pw:
+                opts = {'headless':True,'executable_path':CHROMIUM_BIN,
+                        'args':['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
+                                '--disable-gpu','--no-zygote'],
+                        'proxy':{'server':f'http://127.0.0.1:{rport}'}}
+                b = await pw.chromium.launch(**opts)
+                ctx = await b.new_context(); pg = await ctx.new_page()
+                t0 = time.time()
+                try:
+                    r = await pg.goto(url, wait_until='domcontentloaded', timeout=30000)
+                    out = {'ok':True,'status':(r.status if r else None),'ms':int((time.time()-t0)*1000),'relay_port':rport}
+                except Exception as e:
+                    out = {'ok':False,'err':f'{type(e).__name__}: {str(e)[:90]}','ms':int((time.time()-t0)*1000)}
+                try: await b.close()
+                except Exception: pass
+                return out
+        finally:
+            server.close()
+            try: await server.wait_closed()
+            except Exception: pass
+    try:
+        loop = asyncio.new_event_loop()
+        try:
+            res = loop.run_until_complete(_run())
+        finally:
+            loop.close()
+    except Exception as e:
+        res = {'ok':False,'err':'host: '+f'{type(e).__name__}: {str(e)[:90]}'}
+    return jsonify(res)
+
 def _spawn_campaign(d):
     """يطلّق الحملة في ثريد مستقل — يستخدمها /start والاستئناف التلقائي."""
     _state['stop']    = False
