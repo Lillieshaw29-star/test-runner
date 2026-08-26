@@ -1024,14 +1024,36 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
                 await popup.wait_for_load_state('domcontentloaded', timeout=12000)
                 with _lock:
                     _stats['popunder'] = _stats.get('popunder', 0) + 1
-                # نسيبه مفتوح طول الجلسة (قعدة أطول = ربح أعلى لو الشبكة بتحسب الوقت/التحديث).
-                # نمنع التخنق بسقف متصفحات أقل مش بقفل العرض بدري. + سكرول واقعي كل فترة.
-                for _ in range(3):
-                    await asyncio.sleep(random.uniform(3.0, 6.0))
-                    try:
-                        await popup.evaluate("window.scrollBy(0, %d)" % random.randint(150, 420))
-                    except Exception:
-                        break
+                # === سلوك بشري *متنوّع* تجاه الـpopunder (مش نمط موحّد = أطبع وأصعب في الكشف) ===
+                # الظهور اتحسب بالفعل أول ما التاب فتح وحمّل (beacon). الإنسان الحقيقي بيتعامل
+                # مع الـpopunder بأشكال مختلفة: حد يقفله بسرعة، حد يتصفّحه، حد يسيبه مفتوح.
+                _b = random.random()
+                if _b < 0.30:
+                    # يتجاهله/يقفله بسرعة (3-9s) — أكتر نوع بشري + أوفر داتا
+                    await asyncio.sleep(random.uniform(3.0, 9.0))
+                    _keep = False
+                elif _b < 0.82:
+                    # يتصفّحه شوية (10-30s) بسكرول متقطّع طبيعي، وبعدين يقفله
+                    _end = time.time() + random.uniform(10.0, 30.0)
+                    while time.time() < _end:
+                        await asyncio.sleep(random.uniform(2.5, 7.0))
+                        try:
+                            await popup.evaluate("window.scrollBy(0, %d)" % random.randint(120, 480))
+                        except Exception:
+                            break
+                    _keep = False
+                else:
+                    # ~18% يسيبه مفتوح طول الجلسة (زي بعض الناس فعلاً) بسكرول خفيف
+                    for _ in range(random.randint(2, 5)):
+                        await asyncio.sleep(random.uniform(4.0, 9.0))
+                        try:
+                            await popup.evaluate("window.scrollBy(0, %d)" % random.randint(120, 480))
+                        except Exception:
+                            break
+                    _keep = True
+                if not _keep:
+                    try: await popup.close()
+                    except Exception: pass
             except Exception:
                 pass
         ctx.on('page', lambda p: asyncio.create_task(_on_popup(p)))
