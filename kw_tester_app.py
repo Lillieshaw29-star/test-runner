@@ -322,10 +322,137 @@ DEVICES = [
           'Apple GPU', 'Apple GPU', 'Mac Safari', dpr=2.0),   # Safari = بدون Client Hints
 ]
 
-# فصل الأجهزة حسب النوع
+# فصل الأجهزة حسب النوع (تُستخدم كـ fallback فقط — التوليد الحي تحت)
 _ANDROID_DEVS = [d for d in DEVICES if not d.get('is_ios') and not d.get('is_desktop')]
 _IOS_DEVS     = [d for d in DEVICES if d.get('is_ios')]
 _DESKTOP_DEVS = [d for d in DEVICES if d.get('is_desktop')]
+
+# ============================================================
+# مولّد البصمات: ملايين البصمات الواقعية (موبايل + ديسكتوب)
+# ------------------------------------------------------------
+# كل جلسة بتولّد جهاز جديد بتركيبة عشوائية *متسقة وحقيقية*:
+#   موديل × نسخة أندرويد × بيلد كروم × شاشة × GPU × RAM/أنوية
+# الضرب التوافقي = ملايين التركيبات، وكل قيمة منها جهاز حقيقي ممكن.
+# + ضوضاء canvas/WebGL/audio لكل جلسة (NOISE_SEED) = مفيش جلستين
+#   ليهم نفس البصمة المرسومة، حتى لو نفس الجهاز المُعلن.
+# القيود المحفوظة: deviceMemory ∈ {4,8} فقط (الحد الأقصى للمتصفح 8)،
+#   iOS كله Safari (iOS Chrome بيبان Chromium — تجنبناه)، الديسكتوب
+#   بلا لمس، Client Hints مشتقة من الـ UA دايمًا.
+
+# بيلدات كروم كاملة حقيقية حديثة (نطاق واسع = تنوّع في الـ UA)
+_CHROME_POOL = [
+    '135.0.7049.100','135.0.7049.85','135.0.7049.52','135.0.7049.83',
+    '134.0.6998.135','134.0.6998.89','134.0.6998.45',
+    '133.0.6943.142','133.0.6943.127','133.0.6943.54','133.0.6943.137',
+    '132.0.6834.163','132.0.6834.122','132.0.6834.84',
+    '131.0.6778.140','131.0.6778.104','131.0.6778.86',
+    '130.0.6723.116','130.0.6723.92',
+]
+
+# عائلات أندرويد: كل عائلة = موديلات + GPUات + نسخ أندرويد + شاشات + رام حقيقية
+_ANDROID_FAMILIES = [
+    {'name':'Galaxy', 'models':['SM-S928B','SM-S926B','SM-S921B','SM-S918B','SM-S911B','SM-S908B','SM-F956B','SM-F741B','SM-A556B','SM-A546B','SM-A356B'],
+     'gpus':[('Qualcomm','Adreno (TM) 750'),('Qualcomm','Adreno (TM) 740'),('ARM','Xclipse 940'),('ARM','Xclipse 920'),('ARM','Mali-G68 MC4')],
+     'av':['13','14','15'], 'screens':[(412,915,3.5),(360,780,3.0),(384,824,3.75),(360,800,3.0)], 'mem':[8,8,4]},
+    {'name':'Pixel', 'models':['Pixel 9 Pro','Pixel 9','Pixel 8 Pro','Pixel 8','Pixel 7 Pro','Pixel 7'],
+     'gpus':[('ARM','Mali-G715'),('ARM','Mali-G710')],
+     'av':['14','15'], 'screens':[(412,915,3.5),(412,915,2.625),(393,851,2.75)], 'mem':[8,8]},
+    {'name':'Xiaomi', 'models':['23127PN0CG','24069PC21G','2312DRA50G','23129RAA4G','24069PC21I','2311DRK48G'],
+     'gpus':[('Qualcomm','Adreno (TM) 750'),('Qualcomm','Adreno (TM) 710'),('Qualcomm','Adreno (TM) 613'),('ARM','Mali-G615 MC6')],
+     'av':['13','14','15'], 'screens':[(393,873,2.75),(360,800,3.0),(412,915,2.625)], 'mem':[8,8,4]},
+    {'name':'OnePlus', 'models':['CPH2581','CPH2609','CPH2449','RMX3842'],
+     'gpus':[('Qualcomm','Adreno (TM) 750'),('Qualcomm','Adreno (TM) 730'),('ARM','Mali-G615 MC2')],
+     'av':['14','15'], 'screens':[(412,919,3.5),(412,892,2.625),(393,873,2.75)], 'mem':[8,8]},
+    {'name':'OPPO', 'models':['CPH2609','CPH2437','CPH2557'],
+     'gpus':[('Qualcomm','Adreno (TM) 720'),('ARM','Mali-G615 MC2'),('Qualcomm','Adreno (TM) 710')],
+     'av':['13','14'], 'screens':[(360,804,3.0),(393,873,2.75)], 'mem':[8,4]},
+    {'name':'Vivo', 'models':['V2324','V2318','V2247','V2250'],
+     'gpus':[('Qualcomm','Adreno (TM) 720'),('Qualcomm','Adreno (TM) 610'),('ARM','Mali-G57 MC2')],
+     'av':['13','14'], 'screens':[(392,848,3.0),(360,800,3.0)], 'mem':[8,4]},
+    {'name':'Moto', 'models':['motorola edge 50','XT2347-2','XT2451-4'],
+     'gpus':[('Qualcomm','Adreno (TM) 720'),('Qualcomm','Adreno (TM) 619')],
+     'av':['13','14'], 'screens':[(384,854,2.75),(393,873,2.75)], 'mem':[8,4]},
+    {'name':'Android', 'models':['TECNO CK6n','Infinix X6833B','TECNO CI8n','Infinix X6739'],
+     'gpus':[('ARM','Mali-G57 MC2'),('ARM','Mali-G52 MC2')],
+     'av':['13','14'], 'screens':[(360,800,3.0),(360,780,2.0)], 'mem':[8,4]},
+]
+
+def _gen_android():
+    fam = random.choice(_ANDROID_FAMILIES)
+    gpu_v, gpu_r = random.choice(fam['gpus'])
+    vw, vh, dpr  = random.choice(fam['screens'])
+    d = _and(random.choice(fam['models']), random.choice(_CHROME_POOL),
+             vw, vh, gpu_v, gpu_r, fam['name'],
+             dpr=dpr, mem=random.choice(fam['mem']), av=random.choice(fam['av']))
+    d['cores'] = random.choice([8, 8, 8, 6])   # أغلب الموبايلات ثماني الأنوية
+    return d
+
+# موديلات آيفون حقيقية (كلها Safari — iOS Chrome بيبان Chromium فتجنبناه)
+_IOS_MODELS = [
+    ('iPhone17,3',393,852,3.0,'iPhone 16'),      ('iPhone17,1',402,874,3.0,'iPhone 16 Pro'),
+    ('iPhone17,2',440,956,3.0,'iPhone 16 Pro Max'),('iPhone16,1',393,852,3.0,'iPhone 15 Pro'),
+    ('iPhone16,2',430,932,3.0,'iPhone 15 Pro Max'),('iPhone15,4',393,852,3.0,'iPhone 15'),
+    ('iPhone15,5',430,932,3.0,'iPhone 15 Plus'), ('iPhone15,2',393,852,3.0,'iPhone 14 Pro'),
+    ('iPhone15,3',430,932,3.0,'iPhone 14 Pro Max'),('iPhone14,7',390,844,3.0,'iPhone 14'),
+    ('iPhone14,8',428,926,3.0,'iPhone 14 Plus'), ('iPhone14,2',390,844,3.0,'iPhone 13 Pro'),
+    ('iPhone14,5',390,844,3.0,'iPhone 13'),      ('iPhone13,2',390,844,3.0,'iPhone 12'),
+    ('iPhone14,6',375,667,2.0,'iPhone SE 3'),
+]
+_IOS_VER_POOL = ['18.3','18.2','18.1','18.0','17.7','17.6','17.5']
+
+def _gen_ios():
+    model, vw, vh, dpr, name = random.choice(_IOS_MODELS)
+    ver = random.choice(_IOS_VER_POOL)
+    return _iph(_saf(ver), vw, vh, ver, model, dpr=dpr, name=name)
+
+# ديسكتوب: GPUات + دقّات شاشة حقيقية لكل نظام
+_WIN_GPUS = [
+    ('Google Inc. (Intel)','ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E9B) Direct3D11 vs_5_0 ps_5_0, D3D11)'),
+    ('Google Inc. (Intel)','ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)'),
+    ('Google Inc. (Intel)','ANGLE (Intel, Intel(R) UHD Graphics 620 (0x00003EA0) Direct3D11 vs_5_0 ps_5_0, D3D11)'),
+    ('Google Inc. (NVIDIA)','ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002504) Direct3D11 vs_5_0 ps_5_0, D3D11)'),
+    ('Google Inc. (NVIDIA)','ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 (0x00002882) Direct3D11 vs_5_0 ps_5_0, D3D11)'),
+    ('Google Inc. (NVIDIA)','ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 (0x00001F91) Direct3D11 vs_5_0 ps_5_0, D3D11)'),
+    ('Google Inc. (AMD)','ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)'),
+]
+_WIN_RES  = [(1920,1080,1.0),(1536,864,1.25),(1366,768,1.0),(1600,900,1.0),(2560,1440,1.0),(1280,720,1.0)]
+_MAC_GPUS = [
+    ('Google Inc. (Apple)','ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)'),
+    ('Google Inc. (Apple)','ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)'),
+    ('Google Inc. (Apple)','ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)'),
+]
+_MAC_RES  = [(1440,900,2.0),(1512,982,2.0),(1280,800,2.0),(1728,1117,2.0)]
+_MAC_SAFARI_VERS = ['17.4.1','17.5','17.6','18.0','18.1','18.2']
+
+def _gen_desktop():
+    chrome = random.choice(_CHROME_POOL); major = chrome.split('.')[0]
+    if random.random() < 0.72:                       # ويندوز
+        vw, vh, dpr = random.choice(_WIN_RES)
+        gpu_v, gpu_r = random.choice(_WIN_GPUS)
+        if random.random() < 0.25:                   # Edge
+            ua = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                  'Chrome/%s Safari/537.36 Edg/%s' % (chrome, chrome))
+            ch = _dchua('edge', major)
+        else:                                        # Chrome
+            ua = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                  'Chrome/%s Safari/537.36' % chrome)
+            ch = _dchua('chrome', major)
+        d = _desk(ua, vw, vh, 'Win32', 'Windows', 'Google Inc.', 'chrome', gpu_v, gpu_r, 'Windows', dpr=dpr, ch=ch)
+    else:                                            # ماك
+        vw, vh, dpr = random.choice(_MAC_RES)
+        if random.random() < 0.45:                   # Safari (بدون Client Hints)
+            sv = random.choice(_MAC_SAFARI_VERS)
+            ua = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) '
+                  'Version/%s Safari/605.1.15' % sv)
+            d = _desk(ua, vw, vh, 'MacIntel', 'macOS', 'Apple Computer, Inc.', 'safari', 'Apple GPU', 'Apple GPU', 'Mac Safari', dpr=dpr)
+        else:                                        # Chrome
+            gpu_v, gpu_r = random.choice(_MAC_GPUS)
+            ua = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) '
+                  'Chrome/%s Safari/537.36' % chrome)
+            d = _desk(ua, vw, vh, 'MacIntel', 'macOS', 'Google Inc.', 'chrome', gpu_v, gpu_r, 'Mac Chrome', dpr=dpr, ch=_dchua('chrome', major))
+    d['cores'] = random.choice([4, 6, 8, 8, 12, 16])
+    d['mem']   = random.choice([8, 8, 4])            # deviceMemory محدود بـ 8 كحد أقصى
+    return d
 
 # locale + timezone matched per proxy country
 COUNTRY_PROFILES = {
@@ -774,15 +901,19 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
     # زائر عائد؟ (#2) — يبدأ من كوكيز محفوظة عشان يبان returning للموقع
     reuse_state = _pick_ctx_state() if random.random() < RETURNING_RATE else None
 
-    # اختيار الجهاز موزون لجمهور فيسبوك واقعي مايل للمربح:
+    # اختيار الجهاز: بصمة *مولّدة حيًّا* لكل جلسة (ملايين التركيبات الواقعية)
+    # موزونة لجمهور فيسبوك مايل للمربح:
     # ~72% أندرويد (Chrome Mobile الأعلى CPM) + ~18% آيفون + ~10% ديسكتوب.
     _r = random.random()
-    if _DESKTOP_DEVS and _r < 0.10:
-        dev = random.choice(_DESKTOP_DEVS)
-    elif _IOS_DEVS and _r < 0.28:
-        dev = random.choice(_IOS_DEVS)
-    else:
-        dev = random.choice(_ANDROID_DEVS or DEVICES)
+    try:
+        if _r < 0.10:
+            dev = _gen_desktop()
+        elif _r < 0.28:
+            dev = _gen_ios()
+        else:
+            dev = _gen_android()
+    except Exception:                      # أمان: لو حصل أي خطأ في التوليد نرجع للقائمة الثابتة
+        dev = random.choice(DEVICES)
 
     # detect proxy country for locale/timezone matching
     proxy_country = 'default'
