@@ -1433,7 +1433,8 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
                         break
         guard = asyncio.create_task(_proxy_guard())
 
-        SPAWN_GAP = 0.6          # فجوة القيام بين متصفح والتالي (قيام تدريجي، مش دفعة)
+        SPAWN_GAP = 2.0          # فجوة القيام بين متصفح والتالي — كبيرة عمداً: فتح كروم تقيل على الـCPU،
+                                 # فنسيب كل متصفح يفتح ويستقر قبل اللي بعده = مفيش انفجار CPU = مفيش اختناق (+ أطبع بشرياً)
         inflight  = set()
         launched  = 0
         try:
