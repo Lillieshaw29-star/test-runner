@@ -1278,6 +1278,21 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             try: await browser.close()
             except: pass
 
+# سقف زمني صارم لكل جلسة — يمنع أي جلسة تتعلّق مفتوحة للأبد وتحجز المكان.
+# لو جلسة (goto/سكرول/evaluate) اتعلّقت واتجاوزت الحد، بتتلغى → finally بتاعة run_session
+# بتقفل متصفحها وتفضّي المكان → المتصفحات بتفضل تدور بدل ما تتراكم مفتوحة.
+SESSION_HARD_TIMEOUT = 65   # ثانية (goto ≤25 + قعدة ≤28 + هامش)
+async def _guarded_session(*args, **kwargs):
+    try:
+        await asyncio.wait_for(run_session(*args, **kwargs), timeout=SESSION_HARD_TIMEOUT)
+    except asyncio.TimeoutError:
+        with _lock:
+            _stats['err'] += 1
+            _stats['hardkill'] = _stats.get('hardkill', 0) + 1
+        add_log('⏱ جلسة اتلغت (سقف زمني صارم — كانت معلّقة)')
+    except Exception:
+        pass
+
 # ===== Adaptive autoscaler (تحكّم تلقائي في عدد المتصفحات حسب الضغط) =====
 # المتصفحات تقوم واحد ورا التاني بالتدريج؛ لو فيه مساحة يزوّد لحد السقف، ولو ضغط يهدّي.
 _autoscale = {'target': 0, 'max': 0, 'cpu': 0.0, 'mem': 0}
@@ -1452,7 +1467,7 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
                 while len(inflight) < tgt and launched < count and not _state['stop']:
                     launched += 1
                     t = asyncio.create_task(
-                        run_session(pw, url, _pick(launched), duration, launched, 0,
+                        _guarded_session(pw, url, _pick(launched), duration, launched, 0,
                                     traffic_mix, goto_timeout, pick_proxy=_rand_proxy,
                                     require_proxy=require_proxy))
                     inflight.add(t)
