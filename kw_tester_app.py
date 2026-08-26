@@ -1515,6 +1515,45 @@ def test_proxy():
         return jsonify({'ok':False,'msg':f'فشل: {type(e).__name__}: {str(e)[:120]}',
                         'ms':round((time.time()-t0)*1000)})
 
+@app.route('/diag_goto', methods=['POST'])
+def diag_goto():
+    """تشخيص: goto حقيقي بـChromium عبر بروكسي معيّن (لاختبار إعدادات بروكسي مختلفة من الرنر)."""
+    import asyncio
+    d      = request.json or {}
+    proxy  = (d.get('proxy') or '').strip()
+    url    = (d.get('url') or 'https://ipinfo.io/json').strip()
+    async def _run():
+        from playwright.async_api import async_playwright
+        async with async_playwright() as pw:
+            opts = {'headless':True,'executable_path':CHROMIUM_BIN,
+                    'args':['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
+                            '--disable-gpu','--no-zygote']}
+            pc = parse_proxy(proxy)
+            if pc: opts['proxy'] = pc
+            b = await pw.chromium.launch(**opts)
+            ctx = await b.new_context()
+            pg  = await ctx.new_page()
+            t0  = time.time()
+            try:
+                r   = await pg.goto(url, wait_until='domcontentloaded', timeout=30000)
+                out = {'ok':True, 'status': (r.status if r else None),
+                       'ms': int((time.time()-t0)*1000)}
+            except Exception as e:
+                out = {'ok':False, 'err': f'{type(e).__name__}: {str(e)[:90]}',
+                       'ms': int((time.time()-t0)*1000)}
+            try: await b.close()
+            except Exception: pass
+            return out
+    try:
+        loop = asyncio.new_event_loop()
+        try:
+            res = loop.run_until_complete(_run())
+        finally:
+            loop.close()
+    except Exception as e:
+        res = {'ok':False, 'err':'host: '+f'{type(e).__name__}: {str(e)[:90]}'}
+    return jsonify(res)
+
 def _spawn_campaign(d):
     """يطلّق الحملة في ثريد مستقل — يستخدمها /start والاستئناف التلقائي."""
     _state['stop']    = False
