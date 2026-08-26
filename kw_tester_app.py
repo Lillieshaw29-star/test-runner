@@ -1323,13 +1323,13 @@ def _cpu_count():
     except Exception:
         return 4
 
-HARD_CAP = 6    # 10 كان بيخنق الرنرات الضعيفة (بعضها بيعلّق) — 6 مستقر؛ الـautoscaler بيهدّي أكتر لو ضغط. الحجم من رنرات أكتر مش متصفحات أكتر
+HARD_CAP = 10   # 10 متصفحات — الاختناق مصدره الفتح المتزامن مش الرقم؛ الحل: فتح تسلسلي بطيء (SPAWN_GAP) + الـautoscaler بيهدّي لو ضغط
 
 async def _autoscaler(max_target):
     """يعدّل _autoscale['target'] — الأولوية لبقاء الرنر حيًّا مش عصر آخر متصفح."""
     cores = _cpu_count()
     _autoscale['max'] = min(max_target, HARD_CAP)
-    _autoscale['target'] = min(2, max_target)   # يبدأ صغير ويصعد تدريجياً
+    _autoscale['target'] = min(1, max_target)   # يبدأ بمتصفح واحد ويصعد تدريجياً (فتح تسلسلي)
     _cpu_percent()                              # عيّنة أولى للـ delta
     await asyncio.sleep(2)
     while _state.get('running') and not _state['stop']:
@@ -1433,8 +1433,8 @@ async def _master(url, proxy, count, concurrency, duration, jitter, err_thresh, 
                         break
         guard = asyncio.create_task(_proxy_guard())
 
-        SPAWN_GAP = 2.0          # فجوة القيام بين متصفح والتالي — كبيرة عمداً: فتح كروم تقيل على الـCPU،
-                                 # فنسيب كل متصفح يفتح ويستقر قبل اللي بعده = مفيش انفجار CPU = مفيش اختناق (+ أطبع بشرياً)
+        SPAWN_GAP = 3.0          # فتح تسلسلي: كل متصفح ياخد ~3ث يفتح ويستقر قبل ما اللي بعده يبدأ.
+                                 # فتح كروم تقيل على الـCPU؛ الفتح المتزامن هو سبب الاختناق مش عدد الـ10 نفسه.
         inflight  = set()
         launched  = 0
         try:
