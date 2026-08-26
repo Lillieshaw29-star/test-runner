@@ -221,6 +221,22 @@ def _and(model, chrome, vw, vh, gpu_v, gpu_r, name, dpr=3.0, mem=8, av='14'):
 
 # نسخ كروم كاملة حديثة
 _C135, _C134, _C133, _C132, _C131 = ('135.0.7049.83','134.0.6998.135','133.0.6943.137','132.0.6834.163','131.0.6778.104')
+_CHROME_FULL = {'135':_C135, '134':_C134, '133':_C133, '132':_C132, '131':_C131}
+
+def _desk(ua, vw, vh, plat, chp, vend, eng, gpu_v, gpu_r, name, dpr=1.0, ch=None):
+    """جهاز ديسكتوب — بدون لمس، شاشة كبيرة، بصمة كمبيوتر."""
+    d = {'ua':ua, 'vw':vw, 'vh':vh, 'dpr':dpr, 'name':name, 'platform':plat,
+         'vendor':vend, 'engine':eng, 'is_ios':False, 'is_desktop':True,
+         'ch_platform':chp, 'cores':8, 'mem':8,
+         'webgl_vendor':gpu_v, 'webgl_renderer':gpu_r}
+    if ch:
+        d['ch_ua'] = ch
+    return d
+
+def _dchua(kind, major):  # Client Hints brands لسطح المكتب (Chrome أو Edge)
+    if kind == 'edge':
+        return '"Microsoft Edge";v="%s", "Chromium";v="%s", "Not-A.Brand";v="99"' % (major, major)
+    return '"Chromium";v="%s", "Google Chrome";v="%s", "Not-A.Brand";v="99"' % (major, major)
 
 DEVICES = [
     # ===== iPhones (Safari, Apple GPU, 6 cores) =====
@@ -283,11 +299,33 @@ DEVICES = [
     _and('XT2347-2', _C133, 393, 873, 'Qualcomm', 'Adreno (TM) 619',        'Moto G84',     dpr=2.75, mem=8),
     _and('TECNO CK6n', _C132, 360, 800, 'ARM', 'Mali-G52 MC2',              'Tecno Camon 20', dpr=3.0, mem=8, av='13'),
     _and('Infinix X6833B', _C131, 360, 800, 'ARM', 'Mali-G57 MC2',          'Infinix Note 30', dpr=3.0, mem=8, av='13'),
+
+    # ===== Desktop (بصمة كمبيوتر — بدون لمس، شاشة كبيرة، Client Hints ديسكتوب) =====
+    _desk('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+          1536, 864, 'Win32', 'Windows', 'Google Inc.', 'chrome',
+          'Google Inc. (Intel)', 'ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E9B) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+          'Windows Chrome', dpr=1.0, ch=_dchua('chrome', '135')),
+    _desk('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+          1920, 1080, 'Win32', 'Windows', 'Google Inc.', 'chrome',
+          'Google Inc. (NVIDIA)', 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002504) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+          'Windows Chrome', dpr=1.0, ch=_dchua('chrome', '134')),
+    _desk('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0',
+          1366, 768, 'Win32', 'Windows', 'Google Inc.', 'chrome',
+          'Google Inc. (Intel)', 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A6) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+          'Windows Edge', dpr=1.0, ch=_dchua('edge', '135')),
+    _desk('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+          1440, 900, 'MacIntel', 'macOS', 'Google Inc.', 'chrome',
+          'Google Inc. (Apple)', 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)',
+          'Mac Chrome', dpr=2.0, ch=_dchua('chrome', '135')),
+    _desk('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15',
+          1440, 900, 'MacIntel', 'macOS', 'Apple Computer, Inc.', 'safari',
+          'Apple GPU', 'Apple GPU', 'Mac Safari', dpr=2.0),   # Safari = بدون Client Hints
 ]
 
-# فصل الأجهزة: أندرويد = Chrome Mobile (CPM عالي) | آيفون = Safari (CPM ضعيف على هذا العرض)
-_ANDROID_DEVS = [d for d in DEVICES if not d.get('is_ios')]
+# فصل الأجهزة حسب النوع
+_ANDROID_DEVS = [d for d in DEVICES if not d.get('is_ios') and not d.get('is_desktop')]
 _IOS_DEVS     = [d for d in DEVICES if d.get('is_ios')]
+_DESKTOP_DEVS = [d for d in DEVICES if d.get('is_desktop')]
 
 # locale + timezone matched per proxy country
 COUNTRY_PROFILES = {
@@ -360,6 +398,33 @@ def _client_hints(dev):
     if dev.get('is_ios') or dev.get('engine') != 'chrome' or not dev.get('ch_ua'):
         return {}, None
     import re
+    # --- فرع الديسكتوب: Mobile ?0 + منصة Windows/macOS + بدون موديل ---
+    if dev.get('is_desktop'):
+        major = re.search(r'v="(\d+)"', dev['ch_ua'])
+        major = major.group(1) if major else '135'
+        cver  = _CHROME_FULL.get(major, major + '.0.0.0')
+        plat  = dev.get('ch_platform', 'Windows')
+        pv    = '15.0.0' if plat == 'Windows' else '14.4.0'
+        brands = [{'brand': m.group(1), 'version': m.group(2)}
+                  for m in re.finditer(r'"([^"]+)";v="([^"]+)"', dev['ch_ua'])]
+        fvl = [{'brand': b['brand'],
+                'version': ('99.0.0.0' if ('Not' in b['brand'] or 'Brand' in b['brand']) else cver)}
+               for b in brands]
+        fvl_hdr = ', '.join(f'"{b["brand"]}";v="{b["version"]}"' for b in fvl)
+        headers = {
+            'Sec-CH-UA':                   dev['ch_ua'],
+            'Sec-CH-UA-Mobile':            '?0',
+            'Sec-CH-UA-Platform':          f'"{plat}"',
+            'Sec-CH-UA-Model':             '""',
+            'Sec-CH-UA-Platform-Version':  f'"{pv}"',
+            'Sec-CH-UA-Full-Version-List': fvl_hdr,
+            'Sec-CH-UA-Arch':              '"x86"',
+            'Sec-CH-UA-Bitness':           '"64"',
+        }
+        uad = {'brands': brands, 'mobile': False, 'platform': plat, 'model': '',
+               'platformVersion': pv, 'uaFullVersion': cver, 'fullVersionList': fvl,
+               'architecture': 'x86', 'bitness': '64'}
+        return headers, uad
     ua    = dev['ua']
     m_av  = re.search(r'Android (\d+)', ua)
     m_md  = re.search(r'Android \d+; ([^)]+)\)', ua)
@@ -441,14 +506,14 @@ def _build_url(base_url, traffic_mix, locale='en'):
     return final, referer
 STEALTH_JS = """
 (function(){
-const _ios=__IS_IOS__;
+const _ios=__IS_IOS__, _safari=__IS_SAFARI__;
 const _wv='__WEBGL_VENDOR__',_wr='__WEBGL_RENDERER__';
 
 // --- webdriver ---
 Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
 
-// --- plugins: empty on iOS Safari, minimal list for Chrome Android ---
-Object.defineProperty(navigator,'plugins',{get:()=>_ios?[]:[{name:'Chrome PDF Plugin'},{name:'Chrome PDF Viewer'},{name:'Native Client'}]});
+// --- plugins: فاضي على Safari (موبايل/ماك)، قائمة على Chrome ---
+Object.defineProperty(navigator,'plugins',{get:()=>_safari?[]:[{name:'Chrome PDF Plugin'},{name:'Chrome PDF Viewer'},{name:'Native Client'}]});
 
 // --- languages + locale ---
 Object.defineProperty(navigator,'language',{get:()=>'__LOCALE__'});
@@ -463,11 +528,12 @@ Object.defineProperty(navigator,'vendor',{get:()=>'__VENDOR__'});
 // --- hardware concurrency: device-accurate constant ---
 Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>__CORES__});
 
-// --- device memory: Android only (iOS Safari doesn't expose this) ---
-if(!_ios){try{Object.defineProperty(navigator,'deviceMemory',{get:()=>__MEM__});}catch(e){}}
+// --- device memory: Chrome فقط (Safari موبايل/ماك مالهاش deviceMemory) ---
+if(!_safari){try{Object.defineProperty(navigator,'deviceMemory',{get:()=>__MEM__});}catch(e){}}
+else{try{Object.defineProperty(navigator,'deviceMemory',{get:()=>undefined,configurable:true});}catch(e){}}
 
-// --- touch ---
-Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});
+// --- touch: 5 للموبايل، 0 للديسكتوب ---
+Object.defineProperty(navigator,'maxTouchPoints',{get:()=>__MAXTOUCH__});
 
 // --- chrome runtime (chrome engine only, not iOS Safari) ---
 if('__ENGINE__'==='chrome'){
@@ -543,8 +609,8 @@ Object.defineProperty(screen,'availHeight',{get:()=>window.innerHeight-50});
 Object.defineProperty(screen,'colorDepth',{get:()=>24});
 Object.defineProperty(screen,'pixelDepth',{get:()=>24});
 
-// --- navigator.connection: Android only (iOS has no Network Information API) ---
-if(!_ios){
+// --- navigator.connection: Chrome فقط (Safari مالهاش Network Information API) ---
+if(!_safari){
   try{
     const conn={effectiveType:'4g',downlink:Math.round((5+Math.random()*45)*10)/10,
                 rtt:[50,80,100][Math.floor(Math.random()*3)],
@@ -552,6 +618,10 @@ if(!_ios){
     Object.defineProperty(navigator,'connection',{get:()=>conn});
     Object.defineProperty(navigator,'mozConnection',{get:()=>conn});
   }catch(e){}
+} else {
+  // Safari: نشيل navigator.connection فعلياً (Chromium بيحطها أصلاً)
+  try{Object.defineProperty(navigator,'connection',{get:()=>undefined,configurable:true});}catch(e){}
+  try{Object.defineProperty(navigator,'mozConnection',{get:()=>undefined,configurable:true});}catch(e){}
 }
 
 // --- Battery API ---
@@ -704,13 +774,15 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
     # زائر عائد؟ (#2) — يبدأ من كوكيز محفوظة عشان يبان returning للموقع
     reuse_state = _pick_ctx_state() if random.random() < RETURNING_RATE else None
 
-    # اختيار الجهاز موزون: أندرويد (Chrome Mobile) CPM أعلى بكتير من آيفون على هذا العرض،
-    # بس نسيب آيفونات كفاية عشان التوزيع يبان طبيعي (جمهور فيسبوك حقيقي فيه الاتنين).
-    # ~80% أندرويد + ~20% آيفون.
-    if _ANDROID_DEVS and (not _IOS_DEVS or random.random() < 0.80):
-        dev = random.choice(_ANDROID_DEVS)
+    # اختيار الجهاز موزون لجمهور فيسبوك واقعي مايل للمربح:
+    # ~72% أندرويد (Chrome Mobile الأعلى CPM) + ~18% آيفون + ~10% ديسكتوب.
+    _r = random.random()
+    if _DESKTOP_DEVS and _r < 0.10:
+        dev = random.choice(_DESKTOP_DEVS)
+    elif _IOS_DEVS and _r < 0.28:
+        dev = random.choice(_IOS_DEVS)
     else:
-        dev = random.choice(_IOS_DEVS or DEVICES)
+        dev = random.choice(_ANDROID_DEVS or DEVICES)
 
     # detect proxy country for locale/timezone matching
     proxy_country = 'default'
@@ -727,10 +799,12 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
 
     final_url, ref = _build_url(url, traffic_mix, locale)
 
-    # UA تطبيق فيسبوك الداخلي: آيفون FBAN/FBIOS ، أندرويد FB_IAB/FB4A
-    ua     = dev['ua']
-    is_ios = dev.get('is_ios', False)
-    if ref and ('facebook.com' in ref or 'messenger' in ref) and random.random() < 0.8:
+    # UA تطبيق فيسبوك الداخلي: آيفون FBAN/FBIOS ، أندرويد FB_IAB/FB4A (الموبايل فقط —
+    # الديسكتوب بيفتح فيسبوك ويب بمتصفح عادي، مفيش تطبيق داخلي).
+    ua         = dev['ua']
+    is_ios     = dev.get('is_ios', False)
+    is_desktop = dev.get('is_desktop', False)
+    if (not is_desktop) and ref and ('facebook.com' in ref or 'messenger' in ref) and random.random() < 0.8:
         ua = _fb_app_ua(ua, 'messenger' in ref, is_ios=is_ios,
                         ios_ver=dev.get('ios_ver','18.3'),
                         ios_model=dev.get('ios_model','iPhone15,2'),
@@ -766,9 +840,12 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
 
     noise_seed = random.randint(2, 254)
     mem_val    = dev.get('mem')
+    _is_safari = dev.get('engine') == 'safari'
     stealth = (STEALTH_JS
                .replace('__UAD__',           uad_js)
                .replace('__IS_IOS__',        'true' if is_ios else 'false')
+               .replace('__IS_SAFARI__',     'true' if _is_safari else 'false')
+               .replace('__MAXTOUCH__',      '0' if is_desktop else '5')
                .replace('__LOCALE__',        locale)
                .replace('__LOCALE2__',       locale[:2])
                .replace('__PLATFORM__',      dev.get('platform', 'Linux aarch64'))
@@ -793,7 +870,7 @@ async def run_session(playwright, url, proxy, duration, sid, jitter, traffic_mix
             user_agent=ua,
             viewport={'width':dev['vw'],'height':dev['vh']},
             device_scale_factor=dev['dpr'],
-            is_mobile=True, has_touch=True,
+            is_mobile=(not is_desktop), has_touch=(not is_desktop),
             locale=locale, timezone_id=tz,
             extra_http_headers=hdrs,
         )
