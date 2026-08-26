@@ -1323,7 +1323,7 @@ def _cpu_count():
     except Exception:
         return 4
 
-HARD_CAP = 10   # سقف المتصفحات لكل رنر — الـpopunder دلوقتي بيقفل بدري (82%) فالحِمل أقل؛ الـautoscaler بيهدّي تلقائياً لو ضغط
+HARD_CAP = 6    # 10 كان بيخنق الرنرات الضعيفة (بعضها بيعلّق) — 6 مستقر؛ الـautoscaler بيهدّي أكتر لو ضغط. الحجم من رنرات أكتر مش متصفحات أكتر
 
 async def _autoscaler(max_target):
     """يعدّل _autoscale['target'] — الأولوية لبقاء الرنر حيًّا مش عصر آخر متصفح."""
